@@ -1,11 +1,13 @@
 /**
- * Временный экран-проверка БД (Этап 1, подшаг 1).
- * Показывает данные из всех 7 таблиц сразу после инициализации.
- * Будет заменён на дашборд в Этапе 4.
+ * Временный экран-проверка БД (Этап 1, подшаг 1–3).
+ * Все цвета берутся из theme — хардкод запрещён.
+ * Будет заменён дашбордом в Этапе 4.
  */
 
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { theme } from '@/constants/theme';
 import {
   carRepo,
   categoryRepo,
@@ -29,7 +31,7 @@ export default function DbCheckScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // БД гарантированно готова: _layout.tsx рендерит экраны только после initDatabase()
+    // БД гарантированно готова — _layout.tsx рендерит только после initDatabase()
     async function load() {
       try {
         const [car, categories, reminders, settings] = await Promise.all([
@@ -48,68 +50,68 @@ export default function DbCheckScreen() {
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>❌ Ошибка: {error}</Text>
+      <View style={s.center}>
+        <Text style={s.errorText}>❌ Ошибка: {error}</Text>
       </View>
     );
   }
 
   if (!data) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.label}>Загружаю базу данных…</Text>
+      <View style={s.center}>
+        <Text style={s.textSecondary}>Загружаю…</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>🗄 Проверка базы данных</Text>
+    <ScrollView style={s.root} contentContainerStyle={s.content}>
+      <Text style={s.header}>🗄 Проверка базы данных</Text>
 
       {/* CAR */}
-      <Text style={styles.section}>CAR (машина)</Text>
+      <Text style={s.section}>CAR (машина)</Text>
       {data.car ? (
-        <View style={styles.card}>
+        <View style={s.card}>
           <Row label="name"             value={data.car.name} />
           <Row label="current_odometer" value={String(data.car.current_odometer)} />
           <Row label="fuel_unit"        value={data.car.fuel_unit} />
           <Row label="currency"         value={data.car.currency} />
         </View>
-      ) : <Text style={styles.empty}>нет записи</Text>}
+      ) : <Text style={s.empty}>нет записи</Text>}
 
       {/* APP_SETTINGS */}
-      <Text style={styles.section}>APP_SETTINGS (настройки)</Text>
+      <Text style={s.section}>APP_SETTINGS (настройки)</Text>
       {data.settings ? (
-        <View style={styles.card}>
+        <View style={s.card}>
           <Row label="language"              value={data.settings.language} />
           <Row label="theme"                 value={data.settings.theme} />
           <Row label="notifications_enabled" value={String(data.settings.notifications_enabled)} />
         </View>
-      ) : <Text style={styles.empty}>нет записи</Text>}
+      ) : <Text style={s.empty}>нет записи</Text>}
 
       {/* CATEGORY */}
-      <Text style={styles.section}>
+      <Text style={s.section}>
         CATEGORY ({data.categories.length} категорий)
       </Text>
       {data.categories.map((cat) => (
-        <View key={cat.id} style={styles.row}>
-          <Text style={styles.icon}>{cat.icon}</Text>
-          <Text style={styles.label}>{cat.name}</Text>
+        <View key={cat.id} style={s.listRow}>
+          <Text style={s.iconCol}>{cat.icon}</Text>
+          <Text style={s.textPrimary}>{cat.name}</Text>
           {cat.is_builtin === 1 && (
-            <Text style={styles.badge}>встроенная</Text>
+            <Text style={s.badge}>встроенная</Text>
           )}
         </View>
       ))}
 
       {/* REMINDER */}
-      <Text style={styles.section}>
+      <Text style={s.section}>
         REMINDER ({data.reminders.length} регламентов)
       </Text>
       {data.reminders.map((r) => (
-        <View key={r.id} style={styles.card}>
-          <Row label="title"      value={r.title} />
-          <Row label="type"       value={r.type} />
-          <Row label="interval"   value={
+        <View key={r.id} style={s.card}>
+          <Row label="title"       value={r.title} />
+          <Row label="type"        value={r.type} />
+          <Row label="interval"    value={
             r.type === 'mileage'
               ? `${r.interval_km} км`
               : `${r.interval_days} дней`
@@ -122,7 +124,7 @@ export default function DbCheckScreen() {
         </View>
       ))}
 
-      <Text style={styles.footer}>
+      <Text style={s.footer}>
         ✅ Все таблицы созданы и заполнены стартовыми данными
       </Text>
     </ScrollView>
@@ -131,28 +133,41 @@ export default function DbCheckScreen() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.rowInner}>
-      <Text style={styles.label}>{label}: </Text>
-      <Text style={styles.value}>{value}</Text>
+    <View style={s.rowInner}>
+      <Text style={s.textSecondary}>{label}: </Text>
+      <Text style={s.textPrimary}>{value}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  root:    { flex: 1, backgroundColor: '#000' },
-  content: { padding: 16, paddingBottom: 40 },
-  center:  { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
-  header:  { color: '#3db5f5', fontSize: 20, fontWeight: '500', marginBottom: 16 },
-  section: { color: '#9a9aa2', fontSize: 12, letterSpacing: 1, marginTop: 20, marginBottom: 8 },
-  card:    { backgroundColor: '#0f0f12', borderRadius: 12, padding: 12, marginBottom: 4 },
-  rowInner:{ flexDirection: 'row', marginBottom: 2 },
-  row:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 6,
-             borderBottomWidth: 1, borderBottomColor: '#1c1c22' },
-  label:   { color: '#9a9aa2', fontSize: 13 },
-  value:   { color: '#ffffff', fontSize: 13 },
-  icon:    { color: '#9a9aa2', fontSize: 13, width: 120 },
-  badge:   { color: '#3db5f5', fontSize: 11, marginLeft: 'auto' },
-  empty:   { color: '#5a5a62', fontSize: 13, marginBottom: 8 },
-  errorText: { color: '#e5484d', padding: 16, textAlign: 'center' },
-  footer:  { color: '#4caf7d', marginTop: 24, fontSize: 14, textAlign: 'center' },
+// ── Стили через theme — без единого хардкода цвета ──────────────────────────
+const { colors, radius, typography } = theme;
+
+const s = StyleSheet.create({
+  root:        { flex: 1, backgroundColor: colors.background },
+  content:     { padding: 16, paddingBottom: 40 },
+  center:      { flex: 1, justifyContent: 'center', alignItems: 'center',
+                 backgroundColor: colors.background },
+
+  header:      { color: colors.accent, ...typography.screenTitle, marginBottom: 16 },
+  section:     { color: colors.textWeak, ...typography.sectionHeader,
+                 marginTop: 20, marginBottom: 8, textTransform: 'uppercase' },
+
+  card:        { backgroundColor: colors.surface, borderRadius: radius.card,
+                 padding: 12, marginBottom: 4 },
+  rowInner:    { flexDirection: 'row', marginBottom: 2 },
+
+  listRow:     { flexDirection: 'row', alignItems: 'center',
+                 paddingVertical: 6, borderBottomWidth: 1,
+                 borderBottomColor: colors.border },
+
+  textPrimary:   { color: colors.textPrimary,   ...typography.cardText },
+  textSecondary: { color: colors.textSecondary, ...typography.cardText },
+  iconCol:       { color: colors.textSecondary, ...typography.cardText, width: 130 },
+  badge:         { color: colors.accent, ...typography.labelSmall, marginLeft: 'auto' },
+  empty:         { color: colors.textWeak, ...typography.cardText, marginBottom: 8 },
+
+  errorText:   { color: colors.statusDue.text, padding: 16, textAlign: 'center' },
+  footer:      { color: colors.statusOk.text,  marginTop: 24,
+                 ...typography.label, textAlign: 'center' },
 });
