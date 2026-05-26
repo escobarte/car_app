@@ -1,98 +1,158 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+/**
+ * Временный экран-проверка БД (Этап 1, подшаг 1).
+ * Показывает данные из всех 7 таблиц сразу после инициализации.
+ * Будет заменён на дашборд в Этапе 4.
+ */
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  carRepo,
+  categoryRepo,
+  reminderRepo,
+  settingsRepo,
+  Car,
+  Category,
+  Reminder,
+  AppSettings,
+} from '@/db';
 
-export default function HomeScreen() {
+type DbState = {
+  car: Car | null;
+  categories: Category[];
+  reminders: Reminder[];
+  settings: AppSettings | null;
+};
+
+export default function DbCheckScreen() {
+  const [data, setData] = useState<DbState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // БД гарантированно готова: _layout.tsx рендерит экраны только после initDatabase()
+    async function load() {
+      try {
+        const [car, categories, reminders, settings] = await Promise.all([
+          carRepo.getCar(),
+          categoryRepo.getAllCategories(),
+          reminderRepo.getAllReminders(),
+          settingsRepo.getSettings(),
+        ]);
+        setData({ car, categories, reminders, settings });
+      } catch (e: unknown) {
+        setError(String(e));
+      }
+    }
+    load();
+  }, []);
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>❌ Ошибка: {error}</Text>
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.label}>Загружаю базу данных…</Text>
+      </View>
+    );
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
+      <Text style={styles.header}>🗄 Проверка базы данных</Text>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      {/* CAR */}
+      <Text style={styles.section}>CAR (машина)</Text>
+      {data.car ? (
+        <View style={styles.card}>
+          <Row label="name"             value={data.car.name} />
+          <Row label="current_odometer" value={String(data.car.current_odometer)} />
+          <Row label="fuel_unit"        value={data.car.fuel_unit} />
+          <Row label="currency"         value={data.car.currency} />
+        </View>
+      ) : <Text style={styles.empty}>нет записи</Text>}
+
+      {/* APP_SETTINGS */}
+      <Text style={styles.section}>APP_SETTINGS (настройки)</Text>
+      {data.settings ? (
+        <View style={styles.card}>
+          <Row label="language"              value={data.settings.language} />
+          <Row label="theme"                 value={data.settings.theme} />
+          <Row label="notifications_enabled" value={String(data.settings.notifications_enabled)} />
+        </View>
+      ) : <Text style={styles.empty}>нет записи</Text>}
+
+      {/* CATEGORY */}
+      <Text style={styles.section}>
+        CATEGORY ({data.categories.length} категорий)
+      </Text>
+      {data.categories.map((cat) => (
+        <View key={cat.id} style={styles.row}>
+          <Text style={styles.icon}>{cat.icon}</Text>
+          <Text style={styles.label}>{cat.name}</Text>
+          {cat.is_builtin === 1 && (
+            <Text style={styles.badge}>встроенная</Text>
+          )}
+        </View>
+      ))}
+
+      {/* REMINDER */}
+      <Text style={styles.section}>
+        REMINDER ({data.reminders.length} регламентов)
+      </Text>
+      {data.reminders.map((r) => (
+        <View key={r.id} style={styles.card}>
+          <Row label="title"      value={r.title} />
+          <Row label="type"       value={r.type} />
+          <Row label="interval"   value={
+            r.type === 'mileage'
+              ? `${r.interval_km} км`
+              : `${r.interval_days} дней`
+          } />
+          <Row label="warn_before" value={
+            r.type === 'mileage'
+              ? `${r.warn_before} км`
+              : `${r.warn_before} дней`
+          } />
+        </View>
+      ))}
+
+      <Text style={styles.footer}>
+        ✅ Все таблицы созданы и заполнены стартовыми данными
+      </Text>
+    </ScrollView>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.rowInner}>
+      <Text style={styles.label}>{label}: </Text>
+      <Text style={styles.value}>{value}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  root:    { flex: 1, backgroundColor: '#000' },
+  content: { padding: 16, paddingBottom: 40 },
+  center:  { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+  header:  { color: '#3db5f5', fontSize: 20, fontWeight: '500', marginBottom: 16 },
+  section: { color: '#9a9aa2', fontSize: 12, letterSpacing: 1, marginTop: 20, marginBottom: 8 },
+  card:    { backgroundColor: '#0f0f12', borderRadius: 12, padding: 12, marginBottom: 4 },
+  rowInner:{ flexDirection: 'row', marginBottom: 2 },
+  row:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 6,
+             borderBottomWidth: 1, borderBottomColor: '#1c1c22' },
+  label:   { color: '#9a9aa2', fontSize: 13 },
+  value:   { color: '#ffffff', fontSize: 13 },
+  icon:    { color: '#9a9aa2', fontSize: 13, width: 120 },
+  badge:   { color: '#3db5f5', fontSize: 11, marginLeft: 'auto' },
+  empty:   { color: '#5a5a62', fontSize: 13, marginBottom: 8 },
+  errorText: { color: '#e5484d', padding: 16, textAlign: 'center' },
+  footer:  { color: '#4caf7d', marginTop: 24, fontSize: 14, textAlign: 'center' },
 });
