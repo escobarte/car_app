@@ -1,6 +1,6 @@
 /**
- * Временный экран-проверка БД + i18n (Этап 1, подшаги 1–4).
- * Все цвета — через theme. Все тексты — через useTranslation (t).
+ * Временный экран-проверка БД (Этап 1).
+ * Показывает состояние всех 7 таблиц + результат импорта.
  * Будет заменён дашбордом в Этапе 4.
  */
 
@@ -9,39 +9,50 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { theme } from '@/constants/theme';
+import { useBootstrap } from '@/app/_layout';
 import {
-  carRepo,
-  categoryRepo,
-  reminderRepo,
-  settingsRepo,
-  Car,
-  Category,
-  Reminder,
-  AppSettings,
+  carRepo, categoryRepo, reminderRepo, settingsRepo,
+  Car, Category, Reminder, AppSettings,
 } from '@/db';
+import { openDatabase } from '@/db/database';
 
+type Counts = { fuel: number; expense: number; service: number };
 type DbState = {
   car: Car | null;
   categories: Category[];
   reminders: Reminder[];
   settings: AppSettings | null;
+  counts: Counts;
 };
 
 export default function DbCheckScreen() {
   const { t } = useTranslation();
-  const [data, setData] = useState<DbState | null>(null);
+  const { importResult } = useBootstrap();
+  const [data,  setData]  = useState<DbState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
-        const [car, categories, reminders, settings] = await Promise.all([
+        const db = await openDatabase();
+        const [car, categories, reminders, settings,
+               fuelRow, expRow, svcRow] = await Promise.all([
           carRepo.getCar(),
           categoryRepo.getAllCategories(),
           reminderRepo.getAllReminders(),
           settingsRepo.getSettings(),
+          db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM fuel_entry;'),
+          db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM expense;'),
+          db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM service_record;'),
         ]);
-        setData({ car, categories, reminders, settings });
+        setData({
+          car, categories, reminders, settings,
+          counts: {
+            fuel:    fuelRow?.cnt    ?? 0,
+            expense: expRow?.cnt     ?? 0,
+            service: svcRow?.cnt     ?? 0,
+          },
+        });
       } catch (e: unknown) {
         setError(String(e));
       }
@@ -56,7 +67,6 @@ export default function DbCheckScreen() {
       </View>
     );
   }
-
   if (!data) {
     return (
       <View style={s.center}>
@@ -67,21 +77,35 @@ export default function DbCheckScreen() {
 
   return (
     <ScrollView style={s.root} contentContainerStyle={s.content}>
-      {/* Заголовок — из словаря */}
       <Text style={s.header}>{t('dbCheck.title')}</Text>
 
-      {/* CAR */}
+      {/* ── Результат импорта ─────────────────────────────── */}
+      {importResult && (
+        <View style={[s.card, s.importCard]}>
+          <Text style={s.importTitle}>
+            {importResult.skipped ? '↩ Импорт уже выполнен' : '✅ Импорт завершён'}
+          </Text>
+          {!importResult.skipped && (
+            <>
+              <Row label="Заправок добавлено"  value={String(importResult.fuelCount)} />
+              <Row label="Расходов добавлено"  value={String(importResult.expenseCount)} />
+            </>
+          )}
+        </View>
+      )}
+
+      {/* ── CAR ──────────────────────────────────────────── */}
       <Text style={s.section}>{t('dbCheck.sectionCar')}</Text>
       {data.car ? (
         <View style={s.card}>
           <Row label="name"             value={data.car.name} />
-          <Row label="current_odometer" value={String(data.car.current_odometer)} />
+          <Row label="current_odometer" value={`${data.car.current_odometer.toLocaleString()} км`} />
           <Row label="fuel_unit"        value={data.car.fuel_unit} />
           <Row label="currency"         value={data.car.currency} />
         </View>
       ) : <Text style={s.empty}>нет записи</Text>}
 
-      {/* APP_SETTINGS */}
+      {/* ── APP_SETTINGS ─────────────────────────────────── */}
       <Text style={s.section}>{t('dbCheck.sectionSettings')}</Text>
       {data.settings ? (
         <View style={s.card}>
@@ -91,14 +115,21 @@ export default function DbCheckScreen() {
         </View>
       ) : <Text style={s.empty}>нет записи</Text>}
 
-      {/* CATEGORY — название через t('categories.<key>') */}
+      {/* ── Таблицы с данными ─────────────────────────────── */}
+      <Text style={s.section}>ДАННЫЕ (записи)</Text>
+      <View style={s.card}>
+        <Row label="fuel_entry"     value={`${data.counts.fuel} записей`} />
+        <Row label="expense"        value={`${data.counts.expense} записей`} />
+        <Row label="service_record" value={`${data.counts.service} записей`} />
+      </View>
+
+      {/* ── CATEGORY ─────────────────────────────────────── */}
       <Text style={s.section}>
         {t('dbCheck.sectionCategories', { count: data.categories.length })}
       </Text>
       {data.categories.map((cat) => (
         <View key={cat.id} style={s.listRow}>
           <Text style={s.iconCol}>{cat.icon}</Text>
-          {/* Встроенные: имя из словаря по ключу; пользовательские: имя из БД */}
           <Text style={s.textPrimary}>
             {cat.key ? t(`categories.${cat.key}` as never) : cat.name}
           </Text>
@@ -108,7 +139,7 @@ export default function DbCheckScreen() {
         </View>
       ))}
 
-      {/* REMINDER */}
+      {/* ── REMINDER ─────────────────────────────────────── */}
       <Text style={s.section}>
         {t('dbCheck.sectionReminders', { count: data.reminders.length })}
       </Text>
@@ -143,7 +174,6 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-// ── Стили через theme — без единого хардкода цвета ──────────────────────────
 const { colors, radius, typography } = theme;
 
 const s = StyleSheet.create({
@@ -158,6 +188,9 @@ const s = StyleSheet.create({
 
   card:        { backgroundColor: colors.surface, borderRadius: radius.card,
                  padding: 12, marginBottom: 4 },
+  importCard:  { borderWidth: 1, borderColor: colors.statusOk.text },
+  importTitle: { color: colors.statusOk.text, ...typography.cardTextMedium,
+                 marginBottom: 6 },
   rowInner:    { flexDirection: 'row', marginBottom: 2 },
 
   listRow:     { flexDirection: 'row', alignItems: 'center',
@@ -167,8 +200,8 @@ const s = StyleSheet.create({
   textPrimary:   { color: colors.textPrimary,   ...typography.cardText },
   textSecondary: { color: colors.textSecondary, ...typography.cardText },
   iconCol:       { color: colors.textSecondary, ...typography.cardText, width: 130 },
-  badge:         { color: colors.accent, ...typography.labelSmall, marginLeft: 'auto' },
-  empty:         { color: colors.textWeak, ...typography.cardText, marginBottom: 8 },
+  badge:         { color: colors.accent,        ...typography.labelSmall, marginLeft: 'auto' },
+  empty:         { color: colors.textWeak,      ...typography.cardText, marginBottom: 8 },
 
   errorText:   { color: colors.statusDue.text, padding: 16, textAlign: 'center' },
   footer:      { color: colors.statusOk.text,  marginTop: 24,
