@@ -57,18 +57,21 @@ export async function addFuelEntry(
     }
   }
 
+  // null передаётся как элемент массива — надёжнее variadic при null в expo-sqlite
   const result = await db.runAsync(
     `INSERT INTO fuel_entry
        (car_id, date, odometer, liters, total_cost, price_per_liter, is_full_tank, consumption)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-    entry.car_id,
-    entry.date,
-    entry.odometer,
-    entry.liters,
-    entry.total_cost,
-    price_per_liter,
-    entry.is_full_tank,
-    consumption
+    [
+      entry.car_id,
+      entry.date,
+      entry.odometer,
+      entry.liters,
+      entry.total_cost,
+      price_per_liter,
+      entry.is_full_tank,
+      consumption,
+    ]
   );
 
   await syncOdometer(entry.odometer);

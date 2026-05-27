@@ -4,9 +4,10 @@
  * Будет заменён дашбордом в Этапе 4.
  */
 
-import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { router, useFocusEffect } from 'expo-router';
 
 import { theme } from '@/constants/theme';
 import { useBootstrap } from '@/app/_layout';
@@ -31,34 +32,39 @@ export default function DbCheckScreen() {
   const [data,  setData]  = useState<DbState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const db = await openDatabase();
-        const [car, categories, reminders, settings,
-               fuelRow, expRow, svcRow] = await Promise.all([
-          carRepo.getCar(),
-          categoryRepo.getAllCategories(),
-          reminderRepo.getAllReminders(),
-          settingsRepo.getSettings(),
-          db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM fuel_entry;'),
-          db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM expense;'),
-          db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM service_record;'),
-        ]);
-        setData({
-          car, categories, reminders, settings,
-          counts: {
-            fuel:    fuelRow?.cnt    ?? 0,
-            expense: expRow?.cnt     ?? 0,
-            service: svcRow?.cnt     ?? 0,
-          },
-        });
-      } catch (e: unknown) {
-        setError(String(e));
+  // useFocusEffect перечитывает данные каждый раз, когда экран получает фокус.
+  // Это исправляет баг: useEffect([], []) срабатывал только при монтировании,
+  // поэтому после возврата с формы add-fuel данные оставались устаревшими.
+  useFocusEffect(
+    useCallback(() => {
+      async function load() {
+        try {
+          const db = await openDatabase();
+          const [car, categories, reminders, settings,
+                 fuelRow, expRow, svcRow] = await Promise.all([
+            carRepo.getCar(),
+            categoryRepo.getAllCategories(),
+            reminderRepo.getAllReminders(),
+            settingsRepo.getSettings(),
+            db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM fuel_entry;'),
+            db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM expense;'),
+            db.getFirstAsync<{ cnt: number }>('SELECT COUNT(*) as cnt FROM service_record;'),
+          ]);
+          setData({
+            car, categories, reminders, settings,
+            counts: {
+              fuel:    fuelRow?.cnt ?? 0,
+              expense: expRow?.cnt  ?? 0,
+              service: svcRow?.cnt  ?? 0,
+            },
+          });
+        } catch (e: unknown) {
+          setError(String(e));
+        }
       }
-    }
-    load();
-  }, []);
+      load();
+    }, [])
+  );
 
   if (error) {
     return (
@@ -161,6 +167,16 @@ export default function DbCheckScreen() {
       ))}
 
       <Text style={s.footer}>{t('dbCheck.footer')}</Text>
+
+      {/* ── Временная кнопка для тестирования формы (Этап 2) ── */}
+      <TouchableOpacity
+        style={s.testBtn}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onPress={() => router.push('/add-fuel' as any)}
+        activeOpacity={0.8}
+      >
+        <Text style={s.testBtnText}>⛽ Тест: добавить заправку →</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -206,4 +222,18 @@ const s = StyleSheet.create({
   errorText:   { color: colors.statusDue.text, padding: 16, textAlign: 'center' },
   footer:      { color: colors.statusOk.text,  marginTop: 24,
                  ...typography.label, textAlign: 'center' },
+
+  testBtn: {
+    marginTop: 20,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.borderAccent,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  testBtnText: {
+    color: colors.accent,
+    ...typography.cardTextMedium,
+  },
 });
