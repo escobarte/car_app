@@ -168,7 +168,7 @@ export default function DbCheckScreen() {
 
       <Text style={s.footer}>{t('dbCheck.footer')}</Text>
 
-      {/* ── Временная кнопка для тестирования формы (Этап 2) ── */}
+      {/* ── Временные кнопки навигации (Этапы 2–3) ── */}
       <TouchableOpacity
         style={s.testBtn}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -176,6 +176,15 @@ export default function DbCheckScreen() {
         activeOpacity={0.8}
       >
         <Text style={s.testBtnText}>⛽ Тест: добавить заправку →</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[s.testBtn, { marginTop: 8 }]}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onPress={() => router.push('/history' as any)}
+        activeOpacity={0.8}
+      >
+        <Text style={s.testBtnText}>📋 История →</Text>
       </TouchableOpacity>
     </ScrollView>
   );

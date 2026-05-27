@@ -113,12 +113,15 @@ const en: TranslationKeys = {
   },
 
   history: {
-    title:       'History',
-    empty:       'No entries yet',
-    fuel:        'Fuel',
-    expense:     'Expense',
-    maintenance: 'Service',
-    filterAll:   'All',
+    title:         'History',
+    empty:         'No entries yet',
+    fuel:          'Fuel',
+    expense:       'Expense',
+    maintenance:   'Service',
+    filterAll:     'All',
+    filterFuel:    'Fuel',
+    filterExpense: 'Expenses',
+    filterService: 'Service',
   },
 
   stats: {
