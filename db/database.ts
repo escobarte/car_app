@@ -123,8 +123,12 @@ export async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
  * Создаёт таблицы и стартовые данные.
  * Вызывать один раз при старте приложения.
  * Безопасно вызывать повторно — дубликатов не создаст.
+ *
+ * @param deviceLanguage — язык телефона ('ru' | 'en').
+ *   Используется только при ПЕРВОМ запуске для записи в APP_SETTINGS.
+ *   На последующих запусках INSERT OR IGNORE эту строку пропускает.
  */
-export async function initDatabase(): Promise<void> {
+export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru'): Promise<void> {
   const db = await openDatabase();
 
   // 1. Создаём все таблицы
@@ -138,10 +142,11 @@ export async function initDatabase(): Promise<void> {
      VALUES (1, 'Моя машина', 0, 'литр', 'MDL');`
   );
 
-  // 3. Стартовые настройки (id = 1)
+  // 3. Стартовые настройки (id = 1) — язык берётся с устройства при первом запуске
   await db.runAsync(
     `INSERT OR IGNORE INTO app_settings (id, language, theme, notifications_enabled)
-     VALUES (1, 'ru', 'dark', 1);`
+     VALUES (1, ?, 'dark', 1);`,
+    deviceLanguage
   );
 
   // 4. Встроенные категории (12 штук)

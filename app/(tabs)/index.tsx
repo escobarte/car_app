@@ -1,11 +1,12 @@
 /**
- * Временный экран-проверка БД (Этап 1, подшаг 1–3).
- * Все цвета берутся из theme — хардкод запрещён.
+ * Временный экран-проверка БД + i18n (Этап 1, подшаги 1–4).
+ * Все цвета — через theme. Все тексты — через useTranslation (t).
  * Будет заменён дашбордом в Этапе 4.
  */
 
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { theme } from '@/constants/theme';
 import {
@@ -27,11 +28,11 @@ type DbState = {
 };
 
 export default function DbCheckScreen() {
+  const { t } = useTranslation();
   const [data, setData] = useState<DbState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // БД гарантированно готова — _layout.tsx рендерит только после initDatabase()
     async function load() {
       try {
         const [car, categories, reminders, settings] = await Promise.all([
@@ -51,7 +52,7 @@ export default function DbCheckScreen() {
   if (error) {
     return (
       <View style={s.center}>
-        <Text style={s.errorText}>❌ Ошибка: {error}</Text>
+        <Text style={s.errorText}>{t('common.error')}: {error}</Text>
       </View>
     );
   }
@@ -59,17 +60,18 @@ export default function DbCheckScreen() {
   if (!data) {
     return (
       <View style={s.center}>
-        <Text style={s.textSecondary}>Загружаю…</Text>
+        <Text style={s.textSecondary}>{t('common.loading')}</Text>
       </View>
     );
   }
 
   return (
     <ScrollView style={s.root} contentContainerStyle={s.content}>
-      <Text style={s.header}>🗄 Проверка базы данных</Text>
+      {/* Заголовок — из словаря */}
+      <Text style={s.header}>{t('dbCheck.title')}</Text>
 
       {/* CAR */}
-      <Text style={s.section}>CAR (машина)</Text>
+      <Text style={s.section}>{t('dbCheck.sectionCar')}</Text>
       {data.car ? (
         <View style={s.card}>
           <Row label="name"             value={data.car.name} />
@@ -80,7 +82,7 @@ export default function DbCheckScreen() {
       ) : <Text style={s.empty}>нет записи</Text>}
 
       {/* APP_SETTINGS */}
-      <Text style={s.section}>APP_SETTINGS (настройки)</Text>
+      <Text style={s.section}>{t('dbCheck.sectionSettings')}</Text>
       {data.settings ? (
         <View style={s.card}>
           <Row label="language"              value={data.settings.language} />
@@ -89,23 +91,26 @@ export default function DbCheckScreen() {
         </View>
       ) : <Text style={s.empty}>нет записи</Text>}
 
-      {/* CATEGORY */}
+      {/* CATEGORY — название через t('categories.<key>') */}
       <Text style={s.section}>
-        CATEGORY ({data.categories.length} категорий)
+        {t('dbCheck.sectionCategories', { count: data.categories.length })}
       </Text>
       {data.categories.map((cat) => (
         <View key={cat.id} style={s.listRow}>
           <Text style={s.iconCol}>{cat.icon}</Text>
-          <Text style={s.textPrimary}>{cat.name}</Text>
+          {/* Встроенные: имя из словаря по ключу; пользовательские: имя из БД */}
+          <Text style={s.textPrimary}>
+            {cat.key ? t(`categories.${cat.key}` as never) : cat.name}
+          </Text>
           {cat.is_builtin === 1 && (
-            <Text style={s.badge}>встроенная</Text>
+            <Text style={s.badge}>{t('dbCheck.builtin')}</Text>
           )}
         </View>
       ))}
 
       {/* REMINDER */}
       <Text style={s.section}>
-        REMINDER ({data.reminders.length} регламентов)
+        {t('dbCheck.sectionReminders', { count: data.reminders.length })}
       </Text>
       {data.reminders.map((r) => (
         <View key={r.id} style={s.card}>
@@ -113,20 +118,18 @@ export default function DbCheckScreen() {
           <Row label="type"        value={r.type} />
           <Row label="interval"    value={
             r.type === 'mileage'
-              ? `${r.interval_km} км`
-              : `${r.interval_days} дней`
+              ? `${r.interval_km} ${t('common.km')}`
+              : `${r.interval_days} ${t('common.days_many')}`
           } />
           <Row label="warn_before" value={
             r.type === 'mileage'
-              ? `${r.warn_before} км`
-              : `${r.warn_before} дней`
+              ? `${r.warn_before} ${t('common.km')}`
+              : `${r.warn_before} ${t('common.days_many')}`
           } />
         </View>
       ))}
 
-      <Text style={s.footer}>
-        ✅ Все таблицы созданы и заполнены стартовыми данными
-      </Text>
+      <Text style={s.footer}>{t('dbCheck.footer')}</Text>
     </ScrollView>
   );
 }
