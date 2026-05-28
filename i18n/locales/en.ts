@@ -111,6 +111,32 @@ const en: TranslationKeys = {
     warnBeforeDays: 'Warn {{n}} days before',
     history:        'Work history',
     noHistory:      'No work recorded yet',
+    noReminders:    'No schedules yet. Add the first one!',
+    // "Done" modal
+    markDoneTitle:  'Mark as done',
+    dateField:      'Date',
+    odoField:       'Odometer',
+    costField:      'Cost (optional)',
+    noteField:      'Note (optional)',
+    confirmDone:    'Confirm',
+  },
+
+  addReminder: {
+    title:          'New schedule',
+    name:           'Name',
+    namePlaceholder:'E.g. Oil change',
+    typeMileage:    'By mileage',
+    typeTime:       'By time',
+    intervalKm:     'Interval, km',
+    intervalDays:   'Interval, days',
+    warnBefore:     'Warn before',
+    warnKm:         'km before due',
+    warnDays:       'days before due',
+    typeLabel:      'Type',
+    saveBtn:        'Save schedule',
+    errorName:      'Enter a name',
+    errorInterval:  'Enter an interval',
+    errorWarn:      'Enter warn threshold',
   },
 
   history: {
