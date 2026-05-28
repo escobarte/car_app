@@ -217,6 +217,15 @@ export default function DbCheckScreen() {
       <TouchableOpacity
         style={[s.testBtn, { marginTop: 8 }]}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onPress={() => router.push('/add-expense' as any)}
+        activeOpacity={0.8}
+      >
+        <Text style={s.testBtnText}>💳 Тест: добавить расход →</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[s.testBtn, { marginTop: 8 }]}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onPress={() => router.push('/history' as any)}
         activeOpacity={0.8}
       >

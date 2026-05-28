@@ -36,15 +36,11 @@ export async function addExpense(
   entry: Omit<Expense, 'id'>
 ): Promise<number> {
   const db = await openDatabase();
+  // null передаётся элементом массива — надёжнее variadic при null в expo-sqlite
   const result = await db.runAsync(
     `INSERT INTO expense (car_id, category_id, date, odometer, amount, description)
      VALUES (?, ?, ?, ?, ?, ?);`,
-    entry.car_id,
-    entry.category_id,
-    entry.date,
-    entry.odometer ?? null,
-    entry.amount,
-    entry.description
+    [entry.car_id, entry.category_id, entry.date, entry.odometer ?? null, entry.amount, entry.description]
   );
 
   if (entry.odometer != null) {

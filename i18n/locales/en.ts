@@ -86,14 +86,15 @@ const en: TranslationKeys = {
   },
 
   addExpense: {
-    title:       'Expense',
-    category:    'Category',
-    date:        'Date',
-    amount:      'Amount',
-    description: 'Description',
-    odometer:    'Odometer (optional)',
-    saveBtn:     'Save expense',
-    errorAmount: 'Enter amount',
+    title:           'Expense',
+    category:        'Category',
+    date:            'Date',
+    amount:          'Amount',
+    description:     'Description',
+    odometer:        'Odometer (optional)',
+    saveBtn:         'Save expense',
+    errorAmount:     'Enter amount',
+    errorCategory:   'Select a category',
   },
 
   service: {

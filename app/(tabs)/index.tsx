@@ -329,6 +329,15 @@ export default function DashboardScreen() {
         <TouchableOpacity
           style={s.devBtn}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onPress={() => router.push('/add-expense' as any)}
+          activeOpacity={0.8}
+        >
+          <Text style={s.devBtnText}>💳 {t('addExpense.title')} →</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={s.devBtn}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onPress={() => router.push('/history' as any)}
           activeOpacity={0.8}
         >
