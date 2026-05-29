@@ -2,221 +2,276 @@
  * Движок push-уведомлений — Этап 7.
  * Разделы ТЗ: 6.3.
  *
- * Экспортирует две функции для вызова из _layout.tsx при старте:
- *   setupNotifications()    — разрешения + Android-канал
- *   scheduleReminderNotifications() — планирование уведомлений
+ * АРХИТЕКТУРА ЗАЩИТЫ ОТ EXPO GO:
+ *  В Expo Go (SDK 53+) нативный модуль expo-notifications недоступен на Android.
+ *  Три уровня защиты (каждый нужен — они покрывают разные сценарии):
  *
- * Стратегия расписания (по одному уведомлению на регламент):
+ *  1. LogBox.ignoreLogs — подавляет console.warn/error от пакета.
+ *     Запускается в теле модуля до любого вызова функций.
  *
- *   time-based, ok   → уведомление на warnDate («скоро»)
- *   time-based, soon → уведомление на dueDate  («пора»)
- *   time-based, due  → уведомление через 24 ч  («просрочено»)
+ *  2. isExpoGo() — проверка среды в начале КАЖДОЙ публичной функции.
+ *     Если Expo Go → немедленный return без касания API.
  *
- *   mileage, ok      → не планируем (дату пробега не предугадать)
- *   mileage, soon    → уведомление через 24 ч
- *   mileage, due     → уведомление через 24 ч
- *
- * При каждом запуске: отменяем все старые → планируем новые.
- * Это гарантирует актуальность текста при смене языка или после «Сделано».
+ *  3. Ленивый require внутри loadNotifications() вместо top-level import.
+ *     Metro вычисляет import-выражения ДО тела модуля, поэтому top-level
+ *     import вызывал ошибку ещё на этапе загрузки бандла.
+ *     require() — синхронный, но выполняется только при вызове функции,
+ *     уже после того как LogBox и guard-проверки вступили в силу.
  */
 
-import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { LogBox, Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 import i18n from '@/i18n';
 import { carRepo, reminderRepo, settingsRepo } from '@/db';
 import { calcReminderRow, STATUS_ORDER } from '@/utils/reminders';
 
-// ─── Идентификатор уведомления ───────────────────────────────────────────────
-// Формат: 'reminder-<id>'  — один слот на регламент, перезаписывается при рестарте.
-function notifId(reminderId: number): string {
-  return `reminder-${reminderId}`;
+// ─── 1. LogBox — подавляем предупреждения пакета ─────────────────────────────
+// Работает только в development (в production LogBox отключён — безопасно).
+// Запускается раньше любого require('expo-notifications'), потому что
+// является частью тела модуля, а не import-выражением.
+LogBox.ignoreLogs([
+  'expo-notifications',
+  '[expo-notifications]',
+  'Notifications.setNotificationHandler',
+  'expo-notifications: Android Push',
+  'Encountered an error setting up notifications',
+]);
+
+// ─── 2. Тип для TypeScript (не импорт!) ─────────────────────────────────────
+type NotificationsModule = typeof import('expo-notifications');
+
+// Кеш: загружаем пакет ровно один раз.
+let _notif: NotificationsModule | null = null;
+let _notifAttempted = false;
+
+/**
+ * 3. Ленивая загрузка — require внутри функции, обёрнутый в try/catch.
+ *    Возвращает модуль или null, никогда не бросает исключение.
+ */
+function loadN(): NotificationsModule | null {
+  if (_notifAttempted) return _notif;
+  _notifAttempted = true;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _notif = require('expo-notifications') as NotificationsModule;
+  } catch {
+    _notif = null;
+  }
+  return _notif;
 }
 
-// ─── Минимальный задержка тригера (iOS требует ≥ 1 сек, рекомендуем ≥ 60 с) ──
+// ─── Определение среды ───────────────────────────────────────────────────────
+
+function isExpoGo(): boolean {
+  // appOwnership === 'expo' — Expo Go (все версии SDK)
+  // executionEnvironment === 'storeClient' — дополнительная проверка SDK 41+
+  return (
+    Constants.appOwnership === 'expo' ||
+    (Constants as unknown as Record<string, unknown>)['executionEnvironment'] === 'storeClient'
+  );
+}
+
+// ─── Вспомогательные ────────────────────────────────────────────────────────
+
 const MIN_SECONDS = 65;
 
-/** Разница в секундах между target и сейчас, не меньше MIN_SECONDS. */
 function secondsUntil(target: Date): number {
   return Math.max(MIN_SECONDS, Math.floor((target.getTime() - Date.now()) / 1000));
 }
 
-// ─── Настройка обработчика foreground-уведомлений ────────────────────────────
-
-/**
- * Вызывать ДО рендера приложения (на уровне модуля или в самом начале bootstrap).
- * Управляет тем, показывать ли уведомление, пока приложение открыто.
- */
-export function setupNotificationHandler(): void {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList:   true,
-      shouldPlaySound:  false,
-      shouldSetBadge:   false,
-    }),
-  });
+function notifId(reminderId: number): string {
+  return `reminder-${reminderId}`;
 }
 
-// ─── Запрос разрешений ───────────────────────────────────────────────────────
+// ─── Публичный API ───────────────────────────────────────────────────────────
+
+/**
+ * Устанавливает обработчик foreground-уведомлений.
+ * Вызывать на уровне модуля _layout.tsx (до рендера).
+ */
+export function setupNotificationHandler(): void {
+  if (isExpoGo()) return;                    // guard ②
+  try {
+    const N = loadN();                       // lazy require ③
+    if (!N) return;
+    N.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList:   true,
+        shouldPlaySound:  false,
+        shouldSetBadge:   false,
+      }),
+    });
+  } catch {
+    /* нативный модуль недоступен — игнорируем */
+  }
+}
 
 /**
  * Запрашивает разрешение на уведомления.
- * - На iOS: показывает системный диалог при первом вызове,
- *   на повторных молча возвращает текущий статус.
- * - На Android 13+: то же самое.
- * - Возвращает true, если разрешение получено.
+ * Возвращает true если разрешение получено.
  */
 export async function requestNotificationPermissions(): Promise<boolean> {
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  if (existing === 'granted') return true;
+  if (isExpoGo()) return false;              // guard ②
+  try {
+    const N = loadN();                       // lazy require ③
+    if (!N) return false;
 
-  const { status } = await Notifications.requestPermissionsAsync({
-    ios: { allowAlert: true, allowBadge: false, allowSound: false },
-  });
-  return status === 'granted';
+    const { status: existing } = await N.getPermissionsAsync();
+    if (existing === 'granted') return true;
+
+    const { status } = await N.requestPermissionsAsync({
+      ios: { allowAlert: true, allowBadge: false, allowSound: false },
+    });
+    return status === 'granted';
+  } catch {
+    return false;
+  }
 }
 
-// ─── Android-канал ───────────────────────────────────────────────────────────
-
+/** Создаёт Android-канал уведомлений (идемпотентно). */
 async function ensureAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync('reminders', {
-    name:             i18n.t('notifications.channelName'),
-    description:      i18n.t('notifications.channelDesc'),
-    importance:       Notifications.AndroidImportance.DEFAULT,
-    vibrationPattern: [0, 200, 100, 200],
-    lightColor:       '#3db5f5',
-  });
+  try {
+    const N = loadN();                       // lazy require ③
+    if (!N) return;
+    await N.setNotificationChannelAsync('reminders', {
+      name:             i18n.t('notifications.channelName'),
+      description:      i18n.t('notifications.channelDesc'),
+      importance:       N.AndroidImportance.DEFAULT,
+      vibrationPattern: [0, 200, 100, 200],
+      lightColor:       '#3db5f5',
+    });
+  } catch {
+    /* ignore */
+  }
 }
-
-// ─── Основная функция ────────────────────────────────────────────────────────
 
 /**
  * Планирует (или отменяет) локальные уведомления для регламентов.
  * Вызывать при каждом запуске приложения ПОСЛЕ initDatabase().
+ *
+ * Стратегия (одно уведомление на регламент):
+ *  time ok   → триггер на warnDate
+ *  time soon → триггер на dueDate
+ *  time due  → через 24 ч (ежедневное напоминание)
+ *  mileage ok      → не планируем
+ *  mileage soon/due → через 24 ч
  */
 export async function scheduleReminderNotifications(): Promise<void> {
-  // 1. Проверяем флаг notifications_enabled
-  const settings = await settingsRepo.getSettings();
-  if (!settings?.notifications_enabled) {
-    // Уведомления отключены в настройках → снять все запланированные
-    await Notifications.cancelAllScheduledNotificationsAsync();
-    return;
-  }
+  if (isExpoGo()) return;                    // guard ②
+  try {
+    const N = loadN();                       // lazy require ③
+    if (!N) return;
 
-  // 2. Проверяем системное разрешение
-  const { status } = await Notifications.getPermissionsAsync();
-  if (status !== 'granted') return;
-
-  // 3. Android-канал (идемпотентно)
-  await ensureAndroidChannel();
-
-  // 4. Данные
-  const [car, reminders] = await Promise.all([
-    carRepo.getCar(),
-    reminderRepo.getAllReminders(),
-  ]);
-  if (!car) return;
-
-  // 5. Отменяем все старые уведомления о регламентах
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  for (const notif of scheduled) {
-    if (notif.identifier.startsWith('reminder-')) {
-      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
-    }
-  }
-
-  // 6. Планируем новые
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const odo = car.current_odometer;
-
-  // Сортируем: сначала due, потом soon, потом ok (чтобы не пропустить важные)
-  const sorted = [...reminders].sort(
-    (a, b) =>
-      STATUS_ORDER[calcReminderRow(a, odo, today).status] -
-      STATUS_ORDER[calcReminderRow(b, odo, today).status]
-  );
-
-  const t = i18n.t.bind(i18n);
-
-  for (const reminder of sorted) {
-    const row = calcReminderRow(reminder, odo, today);
-
-    // ── Мнемоника по пробегу (дату не знаем) ───────────────────────────────
-    if (reminder.type === 'mileage') {
-      if (row.status === 'ok') continue;
-
-      const n    = Math.abs(row.remaining);
-      const body = row.status === 'due'
-        ? t('notifications.overdueKm', { n })
-        : t('notifications.soonKm',    { n: row.remaining });
-
-      await Notifications.scheduleNotificationAsync({
-        identifier: notifId(reminder.id),
-        content: {
-          title: reminder.title,
-          body,
-          data:  { reminderId: reminder.id },
-        },
-        trigger: {
-          type:    Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: 86_400, // напомнить через 24 ч
-        },
-      });
-      continue;
+    // ── Флаг notifications_enabled ─────────────────────────────────────────
+    const settings = await settingsRepo.getSettings();
+    if (!settings?.notifications_enabled) {
+      await N.cancelAllScheduledNotificationsAsync().catch(() => {});
+      return;
     }
 
-    // ── Временной регламент (дату знаем) ─────────────────────────────────────
-    const interval = reminder.interval_days ?? 1;
-    const lastDate = new Date(reminder.last_date + 'T00:00:00');
-    const dueDate  = new Date(lastDate.getTime() + interval * 86_400_000);
-    const warnDate = new Date(dueDate.getTime()  - reminder.warn_before * 86_400_000);
+    // ── Системное разрешение ───────────────────────────────────────────────
+    const { status } = await N.getPermissionsAsync();
+    if (status !== 'granted') return;
 
-    if (row.status === 'ok') {
-      // Уведомление «скоро» — запланировать на warnDate
-      // (warnDate гарантированно в будущем, если status == 'ok')
-      await Notifications.scheduleNotificationAsync({
-        identifier: notifId(reminder.id),
-        content: {
-          title: reminder.title,
-          body:  t('notifications.soonDays', { n: reminder.warn_before }),
-          data:  { reminderId: reminder.id },
-        },
-        trigger: {
-          type:    Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: secondsUntil(warnDate),
-        },
-      });
-    } else if (row.status === 'soon') {
-      // Уведомление «пора» — запланировать на dueDate
-      await Notifications.scheduleNotificationAsync({
-        identifier: notifId(reminder.id),
-        content: {
-          title: reminder.title,
-          body:  t('notifications.due'),
-          data:  { reminderId: reminder.id },
-        },
-        trigger: {
-          type:    Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: secondsUntil(dueDate),
-        },
-      });
-    } else {
-      // status === 'due' → уже просрочено, напоминать каждые 24 ч
-      await Notifications.scheduleNotificationAsync({
-        identifier: notifId(reminder.id),
-        content: {
-          title: reminder.title,
-          body:  t('notifications.overdue'),
-          data:  { reminderId: reminder.id },
-        },
-        trigger: {
-          type:    Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: 86_400,
-        },
-      });
+    // ── Android-канал ──────────────────────────────────────────────────────
+    await ensureAndroidChannel();
+
+    // ── Данные ────────────────────────────────────────────────────────────
+    const [car, reminders] = await Promise.all([
+      carRepo.getCar(),
+      reminderRepo.getAllReminders(),
+    ]);
+    if (!car) return;
+
+    // ── Снимаем старые уведомления этого движка ────────────────────────────
+    const scheduled = await N.getAllScheduledNotificationsAsync().catch(() => []);
+    for (const notif of scheduled) {
+      if (notif.identifier.startsWith('reminder-')) {
+        await N.cancelScheduledNotificationAsync(notif.identifier).catch(() => {});
+      }
     }
+
+    // ── Планируем новые ───────────────────────────────────────────────────
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const odo = car.current_odometer;
+    const t   = i18n.t.bind(i18n);
+
+    const sorted = [...reminders].sort(
+      (a, b) =>
+        STATUS_ORDER[calcReminderRow(a, odo, today).status] -
+        STATUS_ORDER[calcReminderRow(b, odo, today).status],
+    );
+
+    for (const reminder of sorted) {
+      const row = calcReminderRow(reminder, odo, today);
+
+      if (reminder.type === 'mileage') {
+        if (row.status === 'ok') continue;
+        const n    = Math.abs(row.remaining);
+        const body = row.status === 'due'
+          ? t('notifications.overdueKm', { n })
+          : t('notifications.soonKm',    { n: row.remaining });
+        await N.scheduleNotificationAsync({
+          identifier: notifId(reminder.id),
+          content: { title: reminder.title, body, data: { reminderId: reminder.id } },
+          trigger: { type: N.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 86_400 },
+        }).catch(() => {});
+        continue;
+      }
+
+      // time-based
+      const interval = reminder.interval_days ?? 1;
+      const lastDate = new Date(reminder.last_date + 'T00:00:00');
+      const dueDate  = new Date(lastDate.getTime() + interval * 86_400_000);
+      const warnDate = new Date(dueDate.getTime()  - reminder.warn_before * 86_400_000);
+
+      if (row.status === 'ok') {
+        await N.scheduleNotificationAsync({
+          identifier: notifId(reminder.id),
+          content: {
+            title: reminder.title,
+            body:  t('notifications.soonDays', { n: reminder.warn_before }),
+            data:  { reminderId: reminder.id },
+          },
+          trigger: {
+            type:    N.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: secondsUntil(warnDate),
+          },
+        }).catch(() => {});
+      } else if (row.status === 'soon') {
+        await N.scheduleNotificationAsync({
+          identifier: notifId(reminder.id),
+          content: {
+            title: reminder.title,
+            body:  t('notifications.due'),
+            data:  { reminderId: reminder.id },
+          },
+          trigger: {
+            type:    N.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: secondsUntil(dueDate),
+          },
+        }).catch(() => {});
+      } else {
+        // due — уже просрочено
+        await N.scheduleNotificationAsync({
+          identifier: notifId(reminder.id),
+          content: {
+            title: reminder.title,
+            body:  t('notifications.overdue'),
+            data:  { reminderId: reminder.id },
+          },
+          trigger: {
+            type:    N.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: 86_400,
+          },
+        }).catch(() => {});
+      }
+    }
+  } catch {
+    /* любая непойманная ошибка — тихо игнорируем */
   }
 }

@@ -152,11 +152,15 @@ const en: TranslationKeys = {
   },
 
   stats: {
-    title:          'Statistics',
-    tabFuel:        'Fuel',
-    tabExpenses:    'Expenses',
-    tabConsumption: 'Consumption (L/100)',
-    noData:         'No data',
+    title:             'Statistics',
+    tabFuel:           'Fuel',
+    tabExpenses:       'Expenses',
+    tabConsumption:    'Consumption (L/100)',
+    noData:            'No data',
+    totalLabel:        'Total 6 months',
+    avgConsLabel:      'Avg. consumption',
+    lPer100:           'L/100 km',
+    categoryBreakdown: 'By category',
   },
 
   settings: {

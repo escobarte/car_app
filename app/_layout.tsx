@@ -1,9 +1,18 @@
 // i18n должен быть первым импортом — до любых компонентов
 import '@/i18n';
 
-// Foreground-обработчик уведомлений должен быть установлен до рендера.
-// В Expo Go (appOwnership === 'expo') expo-notifications не поддерживается
-// начиная с SDK 53 — пропускаем инициализацию, чтобы не было предупреждений.
+// LogBox — второй рубеж подавления предупреждений expo-notifications.
+// Первый рубеж — в notifications/engine.ts (запускается при загрузке модуля).
+// Здесь добавляем дополнительно, на случай если engine.ts ещё не загружен.
+import { LogBox } from 'react-native';
+LogBox.ignoreLogs([
+  'expo-notifications',
+  '[expo-notifications]',
+  'Notifications.setNotificationHandler',
+  'expo-notifications: Android Push',
+]);
+
+// Движок уведомлений: ленивый require внутри, guard isExpoGo() в каждой функции.
 import Constants from 'expo-constants';
 import {
   setupNotificationHandler,
@@ -11,14 +20,11 @@ import {
   scheduleReminderNotifications,
 } from '@/notifications/engine';
 
+// setupNotificationHandler должен быть вызван до рендера.
+// isExpoGo() внутри функции выйдет сам, но IS_EXPO_GO снаружи — дополнительная защита.
 const IS_EXPO_GO = Constants.appOwnership === 'expo';
-
 if (!IS_EXPO_GO) {
-  try {
-    setupNotificationHandler();
-  } catch {
-    // в dev-сборках без нативного модуля — молча игнорируем
-  }
+  setupNotificationHandler(); // try/catch внутри функции
 }
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
