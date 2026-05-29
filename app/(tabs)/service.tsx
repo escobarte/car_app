@@ -41,6 +41,10 @@ import {
   carRepo, serviceRepo, reminderRepo,
   Car, ServiceRecord, Reminder,
 } from '@/db';
+import {
+  calcReminderRow, STATUS_ORDER,
+  type StatusKind, type ReminderRow,
+} from '@/utils/reminders';
 
 const { colors, radius, typography, gradient } = theme;
 
@@ -60,47 +64,6 @@ function toDisplay(d: Date, locale: string): string {
 function parseNum(s: string): number {
   return parseFloat(s.replace(',', '.'));
 }
-
-// ─── Типы ────────────────────────────────────────────────────────────────────
-
-type StatusKind = 'ok' | 'soon' | 'due';
-
-type ReminderRow = {
-  reminder: Reminder;
-  remaining: number;   // км или дней; < 0 → просрочка
-  progress:  number;   // 0..1 — степень использования интервала
-  unit:   'km' | 'days';
-  status: StatusKind;
-};
-
-// ─── Расчёт статуса (ТЗ 6.3) ────────────────────────────────────────────────
-
-function calcRow(r: Reminder, currentOdo: number, today: Date): ReminderRow {
-  if (r.type === 'mileage') {
-    const interval  = r.interval_km ?? 1;
-    const used      = currentOdo - r.last_odometer;
-    const remaining = (r.last_odometer + interval) - currentOdo;
-    const progress  = Math.min(Math.max(used / interval, 0), 1);
-    const status: StatusKind =
-      remaining <= 0             ? 'due'  :
-      remaining <= r.warn_before ? 'soon' : 'ok';
-    return { reminder: r, remaining, progress, unit: 'km', status };
-  }
-
-  // time-based
-  const interval  = r.interval_days ?? 1;
-  const lastDate  = new Date(r.last_date + 'T00:00:00');
-  const dueDate   = new Date(lastDate.getTime() + interval * 86_400_000);
-  const remaining = Math.ceil((dueDate.getTime() - today.getTime()) / 86_400_000);
-  const elapsed   = Math.max((today.getTime() - lastDate.getTime()) / 86_400_000, 0);
-  const progress  = Math.min(elapsed / interval, 1);
-  const status: StatusKind =
-    remaining <= 0             ? 'due'  :
-    remaining <= r.warn_before ? 'soon' : 'ok';
-  return { reminder: r, remaining, progress, unit: 'days', status };
-}
-
-const STATUS_ORDER: Record<StatusKind, number> = { due: 0, soon: 1, ok: 2 };
 
 // ─── Вспомогательные цвета ───────────────────────────────────────────────────
 
@@ -162,7 +125,7 @@ export default function ServiceScreen() {
         const odo = carData?.current_odometer ?? 0;
 
         const computed = reminders
-          .map((r) => calcRow(r, odo, today))
+          .map((r) => calcReminderRow(r, odo, today))
           .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
 
         setCar(carData);
@@ -254,7 +217,7 @@ export default function ServiceScreen() {
       today.setHours(0, 0, 0, 0);
       const odo = carData?.current_odometer ?? 0;
       const computed = reminders
-        .map((r) => calcRow(r, odo, today))
+        .map((r) => calcReminderRow(r, odo, today))
         .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
       setCar(carData);
       setRows(computed);

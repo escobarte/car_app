@@ -1,6 +1,26 @@
 // i18n должен быть первым импортом — до любых компонентов
 import '@/i18n';
 
+// Foreground-обработчик уведомлений должен быть установлен до рендера.
+// В Expo Go (appOwnership === 'expo') expo-notifications не поддерживается
+// начиная с SDK 53 — пропускаем инициализацию, чтобы не было предупреждений.
+import Constants from 'expo-constants';
+import {
+  setupNotificationHandler,
+  requestNotificationPermissions,
+  scheduleReminderNotifications,
+} from '@/notifications/engine';
+
+const IS_EXPO_GO = Constants.appOwnership === 'expo';
+
+if (!IS_EXPO_GO) {
+  try {
+    setupNotificationHandler();
+  } catch {
+    // в dev-сборках без нативного модуля — молча игнорируем
+  }
+}
+
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { getLocales } from 'expo-localization';
 import { Stack } from 'expo-router';
@@ -45,6 +65,16 @@ export default function RootLayout() {
       const result = await importLegacyData();
       setImportResult(result);
 
+      // 5. Уведомления — только в production/dev-build, не в Expo Go
+      if (!IS_EXPO_GO) {
+        try {
+          await requestNotificationPermissions();
+          scheduleReminderNotifications().catch(() => {}); // не блокируем старт
+        } catch {
+          // нативный модуль недоступен — молча пропускаем
+        }
+      }
+
       setIsReady(true);
     }
 
@@ -69,7 +99,8 @@ export default function RootLayout() {
         <Stack>
           <Stack.Screen name="(tabs)"     options={{ headerShown: false }} />
           <Stack.Screen name="add-fuel"     options={{ headerShown: false }} />
-          <Stack.Screen name="add-expense"  options={{ headerShown: false }} />
+          <Stack.Screen name="add-expense"   options={{ headerShown: false }} />
+          <Stack.Screen name="add-reminder"  options={{ headerShown: false }} />
           <Stack.Screen name="history"    options={{ headerShown: false }} />
           <Stack.Screen name="db-check"   options={{ headerShown: false }} />
           <Stack.Screen name="modal"      options={{ presentation: 'modal', title: 'Modal' }} />

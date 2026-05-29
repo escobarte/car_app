@@ -178,6 +178,17 @@ const en: TranslationKeys = {
     categories:          'Expense categories',
   },
 
+  notifications: {
+    channelName:  'Maintenance reminders',
+    channelDesc:  'Notifications about service and maintenance deadlines',
+    due:          'Due now!',
+    overdue:      'Overdue!',
+    soonDays:     'In {{n}} days',
+    soonKm:       '{{n}} km left',
+    overdueKm:    '{{n}} km overdue',
+    overdueDays:  '{{n}} days overdue',
+  },
+
   dbCheck: {
     title:             '🗄 Database Check',
     sectionCar:        'CAR',
