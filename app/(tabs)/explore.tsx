@@ -25,14 +25,14 @@ import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { theme } from '@/constants/theme';
-import { currencySymbol } from '@/constants/currencies';
+import { AppTheme } from '@/constants/theme';
+import { useAppTheme } from '@/contexts/theme-context';
+import { formatMoney } from '@/constants/currencies';
+import { resolveIcon } from '@/utils/icons';
 import {
   carRepo, fuelRepo, expenseRepo, categoryRepo,
   Car, FuelEntry, Expense, Category,
 } from '@/db';
-
-const { colors, radius, typography, gradient } = theme;
 
 // ─── Константы ───────────────────────────────────────────────────────────────
 
@@ -45,25 +45,8 @@ const BAR_PAST_CLR = 'rgba(61,181,245,0.20)';
 
 type TabKey = 'fuel' | 'expenses' | 'consumption';
 
-// ─── Маппинг иконок Tabler → Ionicons ────────────────────────────────────────
-
-const TABLER_TO_ION: Record<string, string> = {
-  'file-text':       'document-text-outline',
-  'spray':           'water-outline',
-  'settings-2':      'hammer-outline',
-  'puzzle':          'extension-puzzle-outline',
-  'device-speaker':  'phone-portrait-outline',
-  'tool':            'build-outline',
-  'armchair':        'home-outline',
-  'engine':          'settings-outline',
-  'clipboard-check': 'clipboard-outline',
-  'alert-octagon':   'alert-circle-outline',
-  'parking':         'car-outline',
-  'wheel':           'reload-circle-outline',
-};
-function ionName(tabler: string): React.ComponentProps<typeof Ionicons>['name'] {
-  return (TABLER_TO_ION[tabler] ?? 'help-circle-outline') as
-    React.ComponentProps<typeof Ionicons>['name'];
+function ionName(icon: string): React.ComponentProps<typeof Ionicons>['name'] {
+  return resolveIcon(icon) as React.ComponentProps<typeof Ionicons>['name'];
 }
 
 // ─── Утилиты: время ──────────────────────────────────────────────────────────
@@ -169,6 +152,10 @@ export default function StatsScreen() {
   const MONTHS   = useMemo(recentMonths, []);
   const CURR_YM  = useMemo(currentYM,   []);
 
+  const th = useAppTheme();
+  const { colors, radius, typography, gradient } = th;
+  const s = useMemo(() => makeStyles(th), [th]);
+
   // ── Состояние ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabKey>('fuel');
   const [car,       setCar]       = useState<Car | null>(null);
@@ -223,13 +210,13 @@ export default function StatsScreen() {
       : vals.reduce((s, v) => s + v, 0);                 // сумма
   }, [chartData, activeTab]);
 
-  const sym     = currencySymbol(car?.currency ?? '');
+  const currCode = car?.currency ?? '';
   const hasData = chartData.some(d => d.value > 0);
 
   function summaryText(): string {
     if (!hasData) return t('stats.noData');
     if (activeTab === 'consumption') return `${summary.toFixed(1)} ${t('stats.lPer100')}`;
-    return `${fmtFull(summary)} ${sym}`;
+    return formatMoney(summary, currCode);
   }
 
   // ── Загрузка ───────────────────────────────────────────────────────────────
@@ -398,7 +385,7 @@ export default function StatsScreen() {
                       <View style={s.catTopRow}>
                         <Text style={s.catName} numberOfLines={1}>{name}</Text>
                         <Text style={s.catAmount}>
-                          {fmtFull(catTotal)}{sym ? ` ${sym}` : ''}
+                          {formatMoney(catTotal, currCode)}
                         </Text>
                       </View>
                       <View style={s.catTrack}>
@@ -423,190 +410,193 @@ export default function StatsScreen() {
 
 // ─── Стили ───────────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  root:    { flex: 1, backgroundColor: colors.background },
-  content: {
-    padding:       16,
-    paddingTop:    Platform.OS === 'ios' ? 56 : 48,
-    paddingBottom: 48,
-  },
-  center: {
-    flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  loadingText: { color: colors.textSecondary, ...typography.cardText },
+function makeStyles(th: AppTheme) {
+  const { colors, radius, typography } = th;
+  return StyleSheet.create({
+    root:    { flex: 1, backgroundColor: colors.background },
+    content: {
+      padding:       16,
+      paddingTop:    Platform.OS === 'ios' ? 56 : 48,
+      paddingBottom: 48,
+    },
+    center: {
+      flex: 1, justifyContent: 'center', alignItems: 'center',
+      backgroundColor: colors.background,
+    },
+    loadingText: { color: colors.textSecondary, ...typography.cardText },
 
-  // ── Заголовок ──────────────────────────────────────────────────────────────
-  screenTitle: {
-    color:        colors.textPrimary,
-    ...typography.screenTitle,
-    marginBottom: 20,
-  },
+    // ── Заголовок ──────────────────────────────────────────────────────────────
+    screenTitle: {
+      color:        colors.textPrimary,
+      ...typography.screenTitle,
+      marginBottom: 20,
+    },
 
-  // ── Переключатель-таблетки ─────────────────────────────────────────────────
-  pillsRow: {
-    flexDirection: 'row',
-    gap:           6,
-    marginBottom:  20,
-  },
-  pillOuter: { flex: 1 },
-  pill: {
-    paddingVertical:   9,
-    borderRadius:      radius.pill,
-    backgroundColor:   colors.surface,
-    borderWidth:       1,
-    borderColor:       colors.border,
-    alignItems:        'center',
-    justifyContent:    'center',
-  },
-  pillActive: {
-    borderColor: 'transparent',
-  },
-  pillText:       { color: colors.textSecondary, fontSize: 12, fontWeight: '400' as const },
-  pillTextActive: { color: '#ffffff',            fontSize: 12, fontWeight: '500' as const },
+    // ── Переключатель-таблетки ─────────────────────────────────────────────────
+    pillsRow: {
+      flexDirection: 'row',
+      gap:           6,
+      marginBottom:  20,
+    },
+    pillOuter: { flex: 1 },
+    pill: {
+      paddingVertical:   9,
+      borderRadius:      radius.pill,
+      backgroundColor:   colors.surface,
+      borderWidth:       1,
+      borderColor:       colors.border,
+      alignItems:        'center',
+      justifyContent:    'center',
+    },
+    pillActive: {
+      borderColor: 'transparent',
+    },
+    pillText:       { color: colors.textSecondary, fontSize: 12, fontWeight: '400' as const },
+    pillTextActive: { color: '#ffffff',            fontSize: 12, fontWeight: '500' as const },
 
-  // ── Сумма ──────────────────────────────────────────────────────────────────
-  summaryRow: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
-    alignItems:     'baseline',
-    marginBottom:   12,
-    paddingHorizontal: 2,
-  },
-  summaryLabel: {
-    color:         colors.textSecondary,
-    ...typography.labelSmall,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  summaryValue: {
-    color:      colors.textPrimary,
-    fontSize:   typography.cardValue.fontSize,
-    fontWeight: typography.cardValue.fontWeight,
-  },
+    // ── Сумма ──────────────────────────────────────────────────────────────────
+    summaryRow: {
+      flexDirection:  'row',
+      justifyContent: 'space-between',
+      alignItems:     'baseline',
+      marginBottom:   12,
+      paddingHorizontal: 2,
+    },
+    summaryLabel: {
+      color:         colors.textSecondary,
+      ...typography.labelSmall,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    summaryValue: {
+      color:      colors.textPrimary,
+      fontSize:   typography.cardValue.fontSize,
+      fontWeight: typography.cardValue.fontWeight,
+    },
 
-  // ── Карточка графика ───────────────────────────────────────────────────────
-  chartCard: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    padding:         16,
-    marginBottom:    20,
-  },
-  noDataBox: {
-    height:         CHART_H + 24,   // chart + labels height
-    justifyContent: 'center',
-    alignItems:     'center',
-  },
-  noDataText: { color: colors.textWeak, ...typography.cardText },
+    // ── Карточка графика ───────────────────────────────────────────────────────
+    chartCard: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      padding:         16,
+      marginBottom:    20,
+    },
+    noDataBox: {
+      height:         CHART_H + 24,   // chart + labels height
+      justifyContent: 'center',
+      alignItems:     'center',
+    },
+    noDataText: { color: colors.textWeak, ...typography.cardText },
 
-  // Область столбиков: flex-row, bars выровнены к низу
-  barsArea: {
-    flexDirection: 'row',
-    alignItems:    'flex-end',
-    gap:           4,
-  },
-  // Каждый столбик: позиционирует бар и подпись
-  barWrapper: {
-    flex:           1,
-    alignItems:     'center',
-    justifyContent: 'flex-end',
-    // position: relative по умолчанию в RN — absolute-дочерние позиционируются внутри
-  },
-  barValueLabel: {
-    position:  'absolute',
-    fontSize:  9,
-    fontWeight: '400' as const,
-    textAlign: 'center',
-    width:     '200%',   // шире самого бара, чтобы числа не обрезались
-  },
-  bar: {
-    width:        '75%',
-    borderRadius: 4,
-    minHeight:    0,
-  },
+    // Область столбиков: flex-row, bars выровнены к низу
+    barsArea: {
+      flexDirection: 'row',
+      alignItems:    'flex-end',
+      gap:           4,
+    },
+    // Каждый столбик: позиционирует бар и подпись
+    barWrapper: {
+      flex:           1,
+      alignItems:     'center',
+      justifyContent: 'flex-end',
+      // position: relative по умолчанию в RN — absolute-дочерние позиционируются внутри
+    },
+    barValueLabel: {
+      position:  'absolute',
+      fontSize:  9,
+      fontWeight: '400' as const,
+      textAlign: 'center',
+      width:     '200%',   // шире самого бара, чтобы числа не обрезались
+    },
+    bar: {
+      width:        '75%',
+      borderRadius: 4,
+      minHeight:    0,
+    },
 
-  // Подписи месяцев под графиком
-  labelsRow: {
-    flexDirection: 'row',
-    gap:           4,
-    marginTop:     8,
-  },
-  labelCell: {
-    flex:       1,
-    alignItems: 'center',
-  },
-  monthLabel: {
-    color:    colors.textWeak,
-    fontSize: 11,
-    fontWeight: '400' as const,
-  },
+    // Подписи месяцев под графиком
+    labelsRow: {
+      flexDirection: 'row',
+      gap:           4,
+      marginTop:     8,
+    },
+    labelCell: {
+      flex:       1,
+      alignItems: 'center',
+    },
+    monthLabel: {
+      color:    colors.textWeak,
+      fontSize: 11,
+      fontWeight: '400' as const,
+    },
 
-  // ── Секция категорий ───────────────────────────────────────────────────────
-  sectionHeader: {
-    color:         colors.textWeak,
-    ...typography.sectionHeader,
-    textTransform: 'uppercase',
-    marginBottom:  8,
-  },
-  emptyCard: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    padding:         24,
-    alignItems:      'center',
-    marginBottom:    16,
-  },
-  catCard: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    paddingVertical: 4,
-    marginBottom:    16,
-  },
-  catRow: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    paddingVertical:   13,
-    paddingHorizontal: 14,
-  },
-  catBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  catIconWrap: {
-    width:           30,
-    height:          30,
-    borderRadius:    8,
-    backgroundColor: colors.background,
-    justifyContent:  'center',
-    alignItems:      'center',
-    marginRight:     10,
-  },
-  catBody: { flex: 1 },
-  catTopRow: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
-    alignItems:     'baseline',
-    marginBottom:   7,
-  },
-  catName: {
-    color:       colors.textPrimary,
-    ...typography.cardText,
-    flex:        1,
-    marginRight: 8,
-  },
-  catAmount: {
-    color:      colors.textSecondary,
-    ...typography.label,
-    flexShrink: 0,
-  },
-  catTrack: {
-    height:          4,
-    borderRadius:    2,
-    backgroundColor: colors.border,
-    overflow:        'hidden',
-  },
-  catFill: {
-    height:          4,
-    borderRadius:    2,
-    backgroundColor: colors.accent,
-  },
-});
+    // ── Секция категорий ───────────────────────────────────────────────────────
+    sectionHeader: {
+      color:         colors.textWeak,
+      ...typography.sectionHeader,
+      textTransform: 'uppercase',
+      marginBottom:  8,
+    },
+    emptyCard: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      padding:         24,
+      alignItems:      'center',
+      marginBottom:    16,
+    },
+    catCard: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      paddingVertical: 4,
+      marginBottom:    16,
+    },
+    catRow: {
+      flexDirection:     'row',
+      alignItems:        'center',
+      paddingVertical:   13,
+      paddingHorizontal: 14,
+    },
+    catBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    catIconWrap: {
+      width:           30,
+      height:          30,
+      borderRadius:    8,
+      backgroundColor: colors.background,
+      justifyContent:  'center',
+      alignItems:      'center',
+      marginRight:     10,
+    },
+    catBody: { flex: 1 },
+    catTopRow: {
+      flexDirection:  'row',
+      justifyContent: 'space-between',
+      alignItems:     'baseline',
+      marginBottom:   7,
+    },
+    catName: {
+      color:       colors.textPrimary,
+      ...typography.cardText,
+      flex:        1,
+      marginRight: 8,
+    },
+    catAmount: {
+      color:      colors.textSecondary,
+      ...typography.label,
+      flexShrink: 0,
+    },
+    catTrack: {
+      height:          4,
+      borderRadius:    2,
+      backgroundColor: colors.border,
+      overflow:        'hidden',
+    },
+    catFill: {
+      height:          4,
+      borderRadius:    2,
+      backgroundColor: colors.accent,
+    },
+  });
+}

@@ -1,0 +1,256 @@
+/**
+ * Экран Настройки — Этап 9.
+ * Разделы ТЗ: 4.6, 9.
+ */
+
+import { useCallback, useMemo, useState } from 'react';
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
+
+import { AppTheme } from '@/constants/theme';
+import { useAppTheme, useThemeCtx } from '@/contexts/theme-context';
+import { settingsRepo, carRepo } from '@/db';
+import { scheduleReminderNotifications } from '@/notifications/engine';
+import { exportDatabase, importDatabase } from '@/db/backup';
+
+// ─── Вспомогательные компоненты (получают colors через props) ───────────────
+
+function SectionHeader({ label, colors }: { label: string; colors: AppTheme['colors'] }) {
+  return (
+    <Text style={[sectionHeaderStyle, { color: colors.textWeak }]}>
+      {label}
+    </Text>
+  );
+}
+const sectionHeaderStyle: object = {
+  fontSize: 12, fontWeight: '400', letterSpacing: 1,
+  textTransform: 'uppercase', marginTop: 24, marginBottom: 6, marginLeft: 4,
+};
+
+function NavRow({
+  label, value, onPress, isLast = false, colors, radius,
+}: {
+  label: string; value?: string; onPress?: () => void;
+  isLast?: boolean; colors: AppTheme['colors']; radius: AppTheme['radius'];
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        rowBase,
+        { borderBottomWidth: isLast ? 0 : 1, borderBottomColor: colors.border },
+      ]}
+      activeOpacity={onPress ? 0.6 : 1}
+      onPress={onPress}
+    >
+      <Text style={[rowLabel, { color: colors.textPrimary }]}>{label}</Text>
+      <View style={rowRight}>
+        {!!value && <Text style={[rowValue, { color: colors.textSecondary }]}>{value}</Text>}
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function SwitchRow({
+  label, value, onChange, isLast = false, colors,
+}: {
+  label: string; value: boolean; onChange: (v: boolean) => void;
+  isLast?: boolean; colors: AppTheme['colors'];
+}) {
+  return (
+    <View style={[rowBase, { borderBottomWidth: isLast ? 0 : 1, borderBottomColor: colors.border }]}>
+      <Text style={[rowLabel, { color: colors.textPrimary }]}>{label}</Text>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ false: colors.border, true: colors.accent }}
+        thumbColor={colors.textPrimary}
+        ios_backgroundColor={colors.border}
+      />
+    </View>
+  );
+}
+
+const rowBase: object  = { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 16 };
+const rowRight: object = { flexDirection: 'row', alignItems: 'center', gap: 6 };
+const rowLabel: object = { fontSize: 15, fontWeight: '400', flex: 1 };
+const rowValue: object = { fontSize: 15, fontWeight: '400' };
+
+// ─── Главный компонент ────────────────────────────────────────────────────────
+
+export default function SettingsScreen() {
+  const { t } = useTranslation();
+  const th = useAppTheme();
+  const { isDark, setDark } = useThemeCtx();
+  const { colors, radius, typography } = th;
+  const s = useMemo(() => makeStyles(th), [th]);
+
+  const [carName,      setCarName]      = useState('');
+  const [odometer,     setOdometer]     = useState(0);
+  const [currency,     setCurrency]     = useState('MDL');
+  const [language,     setLanguage]     = useState<'ru' | 'en'>('ru');
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [backupState,  setBackupState]  = useState<'idle' | 'working' | 'done' | 'error'>('idle');
+
+  const loadData = useCallback(async () => {
+    const [car, settings] = await Promise.all([carRepo.getCar(), settingsRepo.getSettings()]);
+    if (car) { setCarName(car.name); setOdometer(car.current_odometer); setCurrency(car.currency); }
+    if (settings) {
+      setLanguage(settings.language);
+      setNotifEnabled(settings.notifications_enabled === 1);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  async function handleNotifToggle(value: boolean) {
+    setNotifEnabled(value);
+    await settingsRepo.updateSettings({ notifications_enabled: value ? 1 : 0 });
+    scheduleReminderNotifications().catch(() => {});
+  }
+
+  // ── Экспорт ──────────────────────────────────────────────────────────────
+  async function handleExport() {
+    setBackupState('working');
+    try {
+      await exportDatabase();
+      setBackupState('idle');
+    } catch (e) {
+      Alert.alert(t('backup.exportError'), String(e));
+      setBackupState('error');
+      setTimeout(() => setBackupState('idle'), 2000);
+    }
+  }
+
+  // ── Импорт ───────────────────────────────────────────────────────────────
+  async function handleImport() {
+    Alert.alert(
+      t('backup.importConfirmTitle'),
+      t('backup.importConfirmMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text:  t('backup.importConfirmOk'),
+          style: 'destructive',
+          onPress: async () => {
+            setBackupState('working');
+            const result = await importDatabase();
+            if (result.ok) {
+              const { counts: c } = result;
+              Alert.alert(
+                t('backup.importSuccess'),
+                `${c.fuel} ${t('backup.fuel')} · ${c.expense} ${t('backup.expense')} · ${c.service} ${t('backup.service')}`,
+              );
+              await loadData();
+              setBackupState('idle');
+            } else if (result.error === 'cancelled') {
+              setBackupState('idle');
+            } else {
+              Alert.alert(t('backup.importError'), result.error);
+              setBackupState('error');
+              setTimeout(() => setBackupState('idle'), 2000);
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  const langLabel = language === 'ru' ? 'RU' : 'EN';
+
+  return (
+    <View style={s.screen}>
+      {/* ── Шапка ──────────────────────────────────────────────────────── */}
+      <View style={s.header}>
+        <TouchableOpacity
+          style={s.backBtn}
+          activeOpacity={0.7}
+          onPress={() => router.back()}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.accent} />
+        </TouchableOpacity>
+        <Text style={s.headerTitle}>{t('settings.title')}</Text>
+        <View style={s.headerSpacer} />
+      </View>
+
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+
+        {/* ── МАШИНА ─────────────────────────────────────────────────────── */}
+        <SectionHeader label={t('settings.sectionCar')} colors={colors} />
+        <View style={s.card}>
+          <NavRow label={t('settings.carName')}    value={carName}                              isLast={false} colors={colors} radius={radius} />
+          <NavRow label={t('settings.odometer')}   value={`${odometer} ${t('common.km')}`}      isLast={false} colors={colors} radius={radius} />
+          <NavRow label={t('settings.categories')} onPress={() => router.push('/categories' as never)} isLast colors={colors} radius={radius} />
+        </View>
+
+        {/* ── ВАЛЮТА ─────────────────────────────────────────────────────── */}
+        <SectionHeader label={t('settings.sectionCurrency')} colors={colors} />
+        <View style={s.card}>
+          <NavRow label={t('settings.currency')} value={currency} onPress={() => router.push('/select-currency' as never)} isLast colors={colors} radius={radius} />
+        </View>
+
+        {/* ── ЯЗЫК ───────────────────────────────────────────────────────── */}
+        <SectionHeader label={t('settings.sectionLanguage')} colors={colors} />
+        <View style={s.card}>
+          <NavRow label={t('settings.language')} value={langLabel} onPress={() => router.push('/select-language' as never)} isLast colors={colors} radius={radius} />
+        </View>
+
+        {/* ── ВНЕШНИЙ ВИД ────────────────────────────────────────────────── */}
+        <SectionHeader label={t('settings.sectionAppearance')} colors={colors} />
+        <View style={s.card}>
+          <SwitchRow label={t('settings.darkTheme')} value={isDark} onChange={setDark} isLast colors={colors} />
+        </View>
+
+        {/* ── УВЕДОМЛЕНИЯ ────────────────────────────────────────────────── */}
+        <SectionHeader label={t('settings.sectionNotifications')} colors={colors} />
+        <View style={s.card}>
+          <SwitchRow label={t('settings.notifications')} value={notifEnabled} onChange={handleNotifToggle} isLast colors={colors} />
+        </View>
+
+        {/* ── РЕЗЕРВНАЯ КОПИЯ ────────────────────────────────────────────── */}
+        <SectionHeader label={t('settings.sectionBackup')} colors={colors} />
+        <View style={s.card}>
+          <NavRow label={t('settings.exportData')} onPress={handleExport}
+            value={backupState === 'working' ? '…' : undefined}
+            isLast={false} colors={colors} radius={radius} />
+          <NavRow label={t('settings.importData')} onPress={handleImport} isLast colors={colors} radius={radius} />
+        </View>
+
+        <View style={s.bottomPad} />
+      </ScrollView>
+    </View>
+  );
+}
+
+// ─── Стили ──────────────────────────────────────────────────────────────────
+
+function makeStyles(th: AppTheme) {
+  const { colors, radius, typography } = th;
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.background },
+    header: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingTop: 56, paddingBottom: 12, paddingHorizontal: 16,
+      backgroundColor: colors.background,
+    },
+    backBtn:      { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+    headerTitle:  { flex: 1, textAlign: 'center', color: colors.textPrimary, ...typography.screenTitle },
+    headerSpacer: { width: 36 },
+    scroll:        { flex: 1 },
+    scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
+    card: { backgroundColor: colors.surface, borderRadius: radius.card, overflow: 'hidden' },
+    bottomPad: { height: 40 },
+  });
+}

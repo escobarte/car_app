@@ -83,3 +83,27 @@ export async function deleteFuelEntry(id: number): Promise<void> {
   const db = await openDatabase();
   await db.runAsync('DELETE FROM fuel_entry WHERE id = ?;', id);
 }
+
+/** Получить заправку по id. */
+export async function getFuelEntryById(id: number): Promise<FuelEntry | null> {
+  const db = await openDatabase();
+  return db.getFirstAsync<FuelEntry>('SELECT * FROM fuel_entry WHERE id = ?;', id);
+}
+
+/** Обновить поля заправки. Пересчёт consumption не производится автоматически. */
+export async function updateFuelEntry(
+  id: number,
+  fields: Partial<Omit<FuelEntry, 'id' | 'car_id'>>
+): Promise<void> {
+  const db = await openDatabase();
+  const entries = Object.entries(fields);
+  if (entries.length === 0) return;
+
+  const setClauses = entries.map(([col]) => `${col} = ?`).join(', ');
+  const values = entries.map(([, val]) => val);
+
+  await db.runAsync(
+    `UPDATE fuel_entry SET ${setClauses} WHERE id = ?;`,
+    ...values, id
+  );
+}

@@ -1,9 +1,6 @@
 // i18n должен быть первым импортом — до любых компонентов
 import '@/i18n';
 
-// LogBox — второй рубеж подавления предупреждений expo-notifications.
-// Первый рубеж — в notifications/engine.ts (запускается при загрузке модуля).
-// Здесь добавляем дополнительно, на случай если engine.ts ещё не загружен.
 import { LogBox } from 'react-native';
 LogBox.ignoreLogs([
   'expo-notifications',
@@ -12,7 +9,6 @@ LogBox.ignoreLogs([
   'expo-notifications: Android Push',
 ]);
 
-// Движок уведомлений: ленивый require внутри, guard isExpoGo() в каждой функции.
 import Constants from 'expo-constants';
 import {
   setupNotificationHandler,
@@ -20,11 +16,9 @@ import {
   scheduleReminderNotifications,
 } from '@/notifications/engine';
 
-// setupNotificationHandler должен быть вызван до рендера.
-// isExpoGo() внутри функции выйдет сам, но IS_EXPO_GO снаружи — дополнительная защита.
 const IS_EXPO_GO = Constants.appOwnership === 'expo';
 if (!IS_EXPO_GO) {
-  setupNotificationHandler(); // try/catch внутри функции
+  setupNotificationHandler();
 }
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
@@ -34,50 +28,76 @@ import { StatusBar } from 'expo-status-bar';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { initDatabase, settingsRepo } from '@/db';
 import { importLegacyData, ImportResult } from '@/db/legacy-import';
 import i18n, { isSupportedLanguage } from '@/i18n';
+import { AppThemeProvider, useThemeCtx } from '@/contexts/theme-context';
 
 export const unstable_settings = { anchor: '(tabs)' };
 
-// ── Контекст результата импорта (чтобы экран-проверка мог его показать) ─────
+// ── Контекст результата импорта ───────────────────────────────────────────────
 type BootstrapCtx = { importResult: ImportResult | null };
 const BootstrapContext = createContext<BootstrapCtx>({ importResult: null });
 export function useBootstrap() { return useContext(BootstrapContext); }
 
+// ── Внутренний компонент: имеет доступ к ThemeContext ─────────────────────────
+function NavShell({ importResult }: { importResult: ImportResult | null }) {
+  const { isDark } = useThemeCtx();
+
+  return (
+    <BootstrapContext.Provider value={{ importResult }}>
+      <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(tabs)"          options={{ headerShown: false }} />
+          <Stack.Screen name="add-fuel"         options={{ headerShown: false }} />
+          <Stack.Screen name="add-expense"      options={{ headerShown: false }} />
+          <Stack.Screen name="add-reminder"     options={{ headerShown: false }} />
+          <Stack.Screen name="settings"         options={{ headerShown: false }} />
+          <Stack.Screen name="select-currency"  options={{ headerShown: false }} />
+          <Stack.Screen name="select-language"  options={{ headerShown: false }} />
+          <Stack.Screen name="categories"       options={{ headerShown: false }} />
+          <Stack.Screen name="history"          options={{ headerShown: false }} />
+          <Stack.Screen name="db-check"         options={{ headerShown: false }} />
+          <Stack.Screen name="modal"            options={{ presentation: 'modal', title: 'Modal' }} />
+        </Stack>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
+      </ThemeProvider>
+    </BootstrapContext.Provider>
+  );
+}
+
+// ── Корневой Layout ───────────────────────────────────────────────────────────
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const [isReady,      setIsReady]      = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [initDark,     setInitDark]     = useState(true);
 
   useEffect(() => {
     async function bootstrap() {
-      // 1. Язык телефона для первого запуска
       const deviceCode = getLocales()[0]?.languageCode ?? 'en';
       const deviceLang = isSupportedLanguage(deviceCode) ? deviceCode : 'en';
 
-      // 2. БД: таблицы + стартовые данные
       await initDatabase(deviceLang);
 
-      // 3. Язык из сохранённых настроек → i18n
       const settings = await settingsRepo.getSettings();
-      if (settings && isSupportedLanguage(settings.language)) {
-        await i18n.changeLanguage(settings.language);
+      if (settings) {
+        if (isSupportedLanguage(settings.language)) {
+          await i18n.changeLanguage(settings.language);
+        }
+        setInitDark(settings.theme !== 'light');
       }
 
-      // 4. Разовый импорт исторических данных
       const result = await importLegacyData();
       setImportResult(result);
 
-      // 5. Уведомления — только в production/dev-build, не в Expo Go
       if (!IS_EXPO_GO) {
         try {
           await requestNotificationPermissions();
-          scheduleReminderNotifications().catch(() => {}); // не блокируем старт
+          scheduleReminderNotifications().catch(() => {});
         } catch {
-          // нативный модуль недоступен — молча пропускаем
+          /* нативный модуль недоступен */
         }
       }
 
@@ -100,19 +120,10 @@ export default function RootLayout() {
   }
 
   return (
-    <BootstrapContext.Provider value={{ importResult }}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)"     options={{ headerShown: false }} />
-          <Stack.Screen name="add-fuel"     options={{ headerShown: false }} />
-          <Stack.Screen name="add-expense"   options={{ headerShown: false }} />
-          <Stack.Screen name="add-reminder"  options={{ headerShown: false }} />
-          <Stack.Screen name="history"    options={{ headerShown: false }} />
-          <Stack.Screen name="db-check"   options={{ headerShown: false }} />
-          <Stack.Screen name="modal"      options={{ presentation: 'modal', title: 'Modal' }} />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
-    </BootstrapContext.Provider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppThemeProvider initialDark={initDark}>
+        <NavShell importResult={importResult} />
+      </AppThemeProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -25,14 +25,13 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { theme } from '@/constants/theme';
-import { currencySymbol } from '@/constants/currencies';
+import { AppTheme } from '@/constants/theme';
+import { useAppTheme } from '@/contexts/theme-context';
+import { formatMoney } from '@/constants/currencies';
 import {
   carRepo, fuelRepo, expenseRepo, serviceRepo, reminderRepo,
   Car, FuelEntry, Expense, ServiceRecord, Reminder,
 } from '@/db';
-
-const { colors, radius, typography, gradient } = theme;
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
@@ -95,6 +94,10 @@ const STATUS_ORDER: Record<StatusKind, number> = { due: 0, soon: 1, ok: 2 };
 export default function DashboardScreen() {
   const { t, i18n } = useTranslation();
   const locale = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
+
+  const th = useAppTheme();
+  const { colors, radius, typography, gradient } = th;
+  const s = useMemo(() => makeStyles(th), [th]);
 
   // ── Состояние ─────────────────────────────────────────────────────────────
   const [car,         setCar]         = useState<Car | null>(null);
@@ -169,7 +172,7 @@ export default function DashboardScreen() {
 
   // ── Производные значения ──────────────────────────────────────────────────
 
-  const sym         = currencySymbol(car?.currency ?? '');
+  const currCode    = car?.currency ?? '';
   const monthLabel  = useMemo(() => formatCurrentMonth(locale), [locale]);
   const odometer    = car?.current_odometer.toLocaleString() ?? '—';
 
@@ -230,7 +233,7 @@ export default function DashboardScreen() {
         <TouchableOpacity
           style={s.gearBtn}
           activeOpacity={0.7}
-          onPress={() => {/* TODO Этап 9: router.push('/settings') */}}
+          onPress={() => router.push('/settings' as never)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <Ionicons name="settings-outline" size={22} color={colors.textSecondary} />
@@ -246,11 +249,7 @@ export default function DashboardScreen() {
       >
         <Text style={s.totalLabel}>{t('dashboard.thisMonth')}</Text>
         <Text style={s.totalAmount}>
-          {monthlyTotal.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}{' '}
-          {sym}
+          {formatMoney(monthlyTotal, currCode)}
         </Text>
       </LinearGradient>
 
@@ -259,9 +258,7 @@ export default function DashboardScreen() {
         <View style={[s.statCard, { marginRight: 8 }]}>
           <Text style={s.statTitle}>{t('dashboard.avgFuelPrice')}</Text>
           <Text style={s.statValue}>
-            {avgPrice != null
-              ? `${avgPrice.toFixed(2)} ${sym}`
-              : '—'}
+            {avgPrice != null ? formatMoney(avgPrice, currCode) : '—'}
           </Text>
           <Text style={s.statSub}>{t('dashboard.perLiter')}</Text>
         </View>
@@ -359,148 +356,151 @@ export default function DashboardScreen() {
 
 // ─── Стили ──────────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  root:    { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, paddingTop: Platform.OS === 'ios' ? 56 : 48, paddingBottom: 40 },
-  center:  { flex: 1, justifyContent: 'center', alignItems: 'center',
-             backgroundColor: colors.background },
+function makeStyles(th: AppTheme) {
+  const { colors, radius, typography } = th;
+  return StyleSheet.create({
+    root:    { flex: 1, backgroundColor: colors.background },
+    content: { padding: 16, paddingTop: Platform.OS === 'ios' ? 56 : 48, paddingBottom: 40 },
+    center:  { flex: 1, justifyContent: 'center', alignItems: 'center',
+               backgroundColor: colors.background },
 
-  loadingText: { color: colors.textSecondary, ...typography.cardText },
+    loadingText: { color: colors.textSecondary, ...typography.cardText },
 
-  // ── Шапка ──────────────────────────────────────────────────────────────
-  topRow: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
-    alignItems:     'flex-start',
-    marginBottom:   20,
-  },
-  monthLabel: {
-    color: colors.textPrimary,
-    ...typography.screenTitle,
-    marginBottom: 4,
-  },
-  odoLabel: {
-    color: colors.textSecondary,
-    ...typography.label,
-  },
-  gearBtn: {
-    marginTop: 2,
-  },
+    // ── Шапка ──────────────────────────────────────────────────────────────
+    topRow: {
+      flexDirection:  'row',
+      justifyContent: 'space-between',
+      alignItems:     'flex-start',
+      marginBottom:   20,
+    },
+    monthLabel: {
+      color: colors.textPrimary,
+      ...typography.screenTitle,
+      marginBottom: 4,
+    },
+    odoLabel: {
+      color: colors.textSecondary,
+      ...typography.label,
+    },
+    gearBtn: {
+      marginTop: 2,
+    },
 
-  // ── Градиентный блок суммы ─────────────────────────────────────────────
-  totalBlock: {
-    borderRadius:    radius.totalBlock,
-    paddingVertical: 28,
-    paddingHorizontal: 24,
-    alignItems:      'center',
-    marginBottom:    16,
-  },
-  totalLabel: {
-    color:        'rgba(255,255,255,0.75)',
-    ...typography.label,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  totalAmount: {
-    color:      '#ffffff',
-    fontSize:   typography.totalAmount.fontSize,
-    fontWeight: typography.totalAmount.fontWeight,
-  },
+    // ── Градиентный блок суммы ─────────────────────────────────────────────
+    totalBlock: {
+      borderRadius:    radius.totalBlock,
+      paddingVertical: 28,
+      paddingHorizontal: 24,
+      alignItems:      'center',
+      marginBottom:    16,
+    },
+    totalLabel: {
+      color:        'rgba(255,255,255,0.75)',
+      ...typography.label,
+      marginBottom: 8,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    totalAmount: {
+      color:      '#ffffff',
+      fontSize:   typography.totalAmount.fontSize,
+      fontWeight: typography.totalAmount.fontWeight,
+    },
 
-  // ── Карточки статистики ────────────────────────────────────────────────
-  statsRow: {
-    flexDirection: 'row',
-    marginBottom:  16,
-  },
-  statCard: {
-    flex:            1,
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    padding:         16,
-  },
-  statTitle: {
-    color:        colors.textSecondary,
-    ...typography.labelSmall,
-    marginBottom: 6,
-  },
-  statValue: {
-    color:        colors.textPrimary,
-    fontSize:     typography.cardValue.fontSize,
-    fontWeight:   typography.cardValue.fontWeight,
-    marginBottom: 4,
-  },
-  statSub: {
-    color: colors.textMuted,
-    ...typography.labelSmall,
-  },
+    // ── Карточки статистики ────────────────────────────────────────────────
+    statsRow: {
+      flexDirection: 'row',
+      marginBottom:  16,
+    },
+    statCard: {
+      flex:            1,
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      padding:         16,
+    },
+    statTitle: {
+      color:        colors.textSecondary,
+      ...typography.labelSmall,
+      marginBottom: 6,
+    },
+    statValue: {
+      color:        colors.textPrimary,
+      fontSize:     typography.cardValue.fontSize,
+      fontWeight:   typography.cardValue.fontWeight,
+      marginBottom: 4,
+    },
+    statSub: {
+      color: colors.textMuted,
+      ...typography.labelSmall,
+    },
 
-  // ── Секция напоминаний ─────────────────────────────────────────────────
-  sectionHeader: {
-    color:            colors.textWeak,
-    ...typography.sectionHeader,
-    textTransform:    'uppercase',
-    marginBottom:     8,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    paddingVertical: 4,
-    marginBottom:    16,
-  },
-  noReminders: {
-    color:   colors.statusOk.text,
-    ...typography.cardText,
-    padding: 12,
-  },
-  reminderRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-  },
-  reminderBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  dot: {
-    width:        28,
-    height:       28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems:     'center',
-    marginRight:    12,
-  },
-  dotInner: {
-    width:        10,
-    height:       10,
-    borderRadius: 5,
-  },
-  reminderTitle: {
-    flex:  1,
-    color: colors.textPrimary,
-    ...typography.cardText,
-  },
-  reminderStatus: {
-    ...typography.label,
-    textAlign: 'right',
-    flexShrink: 0,
-  },
+    // ── Секция напоминаний ─────────────────────────────────────────────────
+    sectionHeader: {
+      color:            colors.textWeak,
+      ...typography.sectionHeader,
+      textTransform:    'uppercase',
+      marginBottom:     8,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      paddingVertical: 4,
+      marginBottom:    16,
+    },
+    noReminders: {
+      color:   colors.statusOk.text,
+      ...typography.cardText,
+      padding: 12,
+    },
+    reminderRow: {
+      flexDirection:  'row',
+      alignItems:     'center',
+      paddingVertical: 13,
+      paddingHorizontal: 14,
+    },
+    reminderBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    dot: {
+      width:        28,
+      height:       28,
+      borderRadius: 14,
+      justifyContent: 'center',
+      alignItems:     'center',
+      marginRight:    12,
+    },
+    dotInner: {
+      width:        10,
+      height:       10,
+      borderRadius: 5,
+    },
+    reminderTitle: {
+      flex:  1,
+      color: colors.textPrimary,
+      ...typography.cardText,
+    },
+    reminderStatus: {
+      ...typography.label,
+      textAlign: 'right',
+      flexShrink: 0,
+    },
 
-  // ── Кнопки-заглушки (dev) ─────────────────────────────────────────────
-  devSection: {
-    gap: 8,
-  },
-  devBtn: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    borderWidth:     1,
-    borderColor:     colors.border,
-    paddingVertical: 13,
-    alignItems:      'center',
-  },
-  devBtnText: {
-    color: colors.textSecondary,
-    ...typography.label,
-  },
-});
+    // ── Кнопки-заглушки (dev) ─────────────────────────────────────────────
+    devSection: {
+      gap: 8,
+    },
+    devBtn: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      borderWidth:     1,
+      borderColor:     colors.border,
+      paddingVertical: 13,
+      alignItems:      'center',
+    },
+    devBtnText: {
+      color: colors.textSecondary,
+      ...typography.label,
+    },
+  });
+}

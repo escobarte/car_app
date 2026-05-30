@@ -68,6 +68,12 @@ export async function updateExpense(
   );
 }
 
+/** Получить расход по id. */
+export async function getExpenseById(id: number): Promise<Expense | null> {
+  const db = await openDatabase();
+  return db.getFirstAsync<Expense>('SELECT * FROM expense WHERE id = ?;', id);
+}
+
 /** Удалить расход по id. */
 export async function deleteExpense(id: number): Promise<void> {
   const db = await openDatabase();

@@ -14,6 +14,9 @@ import { Platform } from 'react-native';
 
 // ─── Тёмная тема (раздел 3 дизайн-системы) ─────────────────────────────────
 
+// ─── Семантические переопределения для истории (иначе хардкодятся в компонентах) ─
+// iconBgFuel / iconBgExpense / iconBgService — фон иконок в списке
+
 export const darkTheme = {
   colors: {
     // Фоны
@@ -39,6 +42,11 @@ export const darkTheme = {
 
     // Иконки
     iconInactive:      '#5a5a62',
+
+    // Фон иконок в списке Истории
+    iconBgFuel:        '#0a1f2e',   // синеватый
+    iconBgExpense:     '#241c0a',   // жёлто-коричневый
+    iconBgService:     '#0c2018',   // зелёный
 
     // Статусы напоминаний (раздел 4.1, 6.3 ТЗ)
     // Красный — ТОЛЬКО «пора/просрочено», не обычный акцент
@@ -95,15 +103,53 @@ export const darkTheme = {
     labelSmall:     { fontSize: 12, fontWeight: '400' as const },
     sectionHeader:  { fontSize: 12, fontWeight: '400' as const, letterSpacing: 1 },
   },
-} as const;
+};
 
 export type AppTheme = typeof darkTheme;
 
+// ─── Светлая тема (раздел 4 дизайн-системы) ─────────────────────────────────
+
+export const lightTheme: AppTheme = {
+  colors: {
+    background:        '#ffffff',
+    surface:           '#F5F5F5',
+    surfaceSecondary:  '#e8e8ec',
+    border:            '#ebebed',
+    borderAccent:      '#3db5f5',
+    activeCard:        '#eaf6fe',
+    accent:            '#1a8fd6',   // темнее — читаемо на белом
+    textPrimary:       '#1a1a1e',
+    textSecondary:     '#8a8a90',
+    textMuted:         '#8a8a90',
+    textWeak:          '#a0a0a6',
+    iconInactive:      '#a0a0a6',
+    iconBgFuel:        '#daeeff',
+    iconBgExpense:     '#fdf3e0',
+    iconBgService:     '#e6f5ec',
+    statusOk: {
+      text:       '#1a8f5a',
+      background: '#e6f5ec',
+      bar:        '#1a8f5a',
+    },
+    statusSoon: {
+      text:       '#b87a10',
+      background: '#fdf3e0',
+      bar:        '#b87a10',
+    },
+    statusDue: {
+      text:       '#d63a3f',
+      background: '#fdeaeb',
+      bar:        '#d63a3f',
+    },
+  },
+  gradient: darkTheme.gradient,   // градиент одинаковый в обеих темах
+  radius:   darkTheme.radius,
+  typography: darkTheme.typography,
+} as const;
+
 /**
- * Активная тема приложения.
- * Сейчас всегда тёмная. На Этапе 9 станет динамической (через context).
- * Импортируй везде именно `theme`, а не `darkTheme` напрямую —
- * тогда при добавлении переключателя менять нужно будет только этот файл.
+ * Дефолтная тема (тёмная). Используется в ThemeContext как начальное значение.
+ * Компоненты должны получать тему через useAppTheme(), а не импортировать напрямую.
  */
 export const theme = darkTheme;
 
@@ -146,12 +192,11 @@ export const Colors = {
     tabIconSelected:darkTheme.colors.accent,           // '#3db5f5'
   },
   light: {
-    // Этап 9: светлая тема. Пока совпадает с тёмной.
-    text:           darkTheme.colors.textPrimary,
-    background:     darkTheme.colors.background,
-    tint:           darkTheme.colors.accent,
-    icon:           darkTheme.colors.textSecondary,
-    tabIconDefault: darkTheme.colors.iconInactive,
-    tabIconSelected:darkTheme.colors.accent,
+    text:           lightTheme.colors.textPrimary,
+    background:     lightTheme.colors.background,
+    tint:           lightTheme.colors.accent,
+    icon:           lightTheme.colors.textSecondary,
+    tabIconDefault: lightTheme.colors.iconInactive,
+    tabIconSelected:lightTheme.colors.accent,
   },
 };

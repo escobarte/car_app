@@ -1,10 +1,15 @@
 /**
- * Экран добавления заправки — Этап 2.
+ * Экран добавления / редактирования заправки — Этап 2.
  * Разделы ТЗ: 4.3, 5.2, 6.1, 6.2.
+ *
+ * Режимы:
+ *  - Добавление: /add-fuel
+ *  - Редактирование: /add-fuel?editId=<id>
+ *
  * Все цвета из theme, весь текст через t().
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -18,16 +23,21 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
-import { theme } from '@/constants/theme';
+import { AppTheme } from '@/constants/theme';
+import { useAppTheme } from '@/contexts/theme-context';
+import { formatMoney } from '@/constants/currencies';
 import { carRepo } from '@/db';
-import { addFuelEntry, getLastFullTankEntry } from '@/db/repositories/fuel';
-
-const { colors, radius, typography } = theme;
+import {
+  addFuelEntry,
+  getLastFullTankEntry,
+  getFuelEntryById,
+  updateFuelEntry,
+} from '@/db/repositories/fuel';
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
@@ -46,6 +56,12 @@ function toDisplay(d: Date): string {
   });
 }
 
+/** 'YYYY-MM-DD' → Date */
+function fromISO(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /** Принимает '25,9' или '25.9' → 25.9 */
 function parseNum(s: string): number {
   return parseFloat(s.replace(',', '.'));
@@ -55,6 +71,12 @@ function parseNum(s: string): number {
 
 export default function AddFuelScreen() {
   const { t } = useTranslation();
+  const { editId } = useLocalSearchParams<{ editId?: string }>();
+  const isEdit = !!editId;
+
+  const th = useAppTheme();
+  const { colors, radius, typography, gradient } = th;
+  const s = useMemo(() => makeStyles(th), [th]);
 
   // ── Поля формы ────────────────────────────────────────────────────────────
   const [dateObj,     setDateObj]     = useState(new Date());
@@ -71,6 +93,7 @@ export default function AddFuelScreen() {
   const [currentOdometer, setCurrentOdometer] = useState(0);
   const [lastFullOdo,     setLastFullOdo]     = useState<number | null>(null);
   const [saving,          setSaving]          = useState(false);
+  const [loadingEdit,     setLoadingEdit]     = useState(isEdit);
 
   useEffect(() => {
     async function load() {
@@ -81,13 +104,29 @@ export default function AddFuelScreen() {
       if (car) {
         setCurrency(car.currency);
         setCurrentOdometer(car.current_odometer);
-        // Пробег по умолчанию — текущий одометр
-        setOdometer(String(car.current_odometer));
+        if (!isEdit) {
+          // При добавлении — одометр по умолчанию = текущий
+          setOdometer(String(car.current_odometer));
+        }
       }
       if (lastFull) setLastFullOdo(lastFull.odometer);
+
+      // Загрузка существующей записи для редактирования
+      if (isEdit && editId) {
+        const entry = await getFuelEntryById(Number(editId));
+        if (entry) {
+          setDateObj(fromISO(entry.date));
+          setOdometer(String(entry.odometer));
+          setLiters(String(entry.liters));
+          setTotalCost(String(entry.total_cost));
+          setIsFullTank(entry.is_full_tank === 1);
+        }
+      }
+
+      setLoadingEdit(false);
     }
     load().catch(console.error);
-  }, []);
+  }, [isEdit, editId]);
 
   // ── Живые вычисления ──────────────────────────────────────────────────────
   const litersNum = parseNum(liters);
@@ -99,10 +138,8 @@ export default function AddFuelScreen() {
   const okOdo    = !isNaN(odoNum)    && odoNum    > 0;
 
   /** Цена за литр — считается всегда (6.1) */
-  const pricePerLiter: string | null =
-    okLiters && okCost
-      ? (costNum / litersNum).toFixed(2)
-      : null;
+  const pricePerLiter: number | null =
+    okLiters && okCost ? costNum / litersNum : null;
 
   /** Расход — только полный бак, нужен предыдущий одометр (6.2) */
   const canCalcConsumption =
@@ -119,9 +156,12 @@ export default function AddFuelScreen() {
   // ── Валидация ─────────────────────────────────────────────────────────────
   function validate(): boolean {
     const errs: Record<string, string> = {};
-    if (!okLiters)                         errs.liters    = t('addFuel.errorLiters');
-    if (!okCost)                           errs.totalCost = t('addFuel.errorCost');
-    if (!okOdo || odoNum < currentOdometer) errs.odometer  = t('addFuel.errorOdometer');
+    if (!okLiters) errs.liters = t('addFuel.errorLiters');
+    if (!okCost)   errs.totalCost = t('addFuel.errorCost');
+    // При редактировании не проверяем минимум одометра строго
+    if (!okOdo || (!isEdit && odoNum < currentOdometer)) {
+      errs.odometer = t('addFuel.errorOdometer');
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -131,14 +171,29 @@ export default function AddFuelScreen() {
     if (!validate() || saving) return;
     setSaving(true);
     try {
-      await addFuelEntry({
-        car_id:       1,
-        date:         toISO(dateObj),
-        odometer:     odoNum,
-        liters:       litersNum,
-        total_cost:   costNum,
-        is_full_tank: isFullTank ? 1 : 0,
-      });
+      if (isEdit && editId) {
+        // Пересчитываем price_per_liter
+        const ppl = okLiters && okCost
+          ? parseFloat((costNum / litersNum).toFixed(2))
+          : undefined;
+        await updateFuelEntry(Number(editId), {
+          date:          toISO(dateObj),
+          odometer:      odoNum,
+          liters:        litersNum,
+          total_cost:    costNum,
+          price_per_liter: ppl,
+          is_full_tank:  isFullTank ? 1 : 0,
+        });
+      } else {
+        await addFuelEntry({
+          car_id:       1,
+          date:         toISO(dateObj),
+          odometer:     odoNum,
+          liters:       litersNum,
+          total_cost:   costNum,
+          is_full_tank: isFullTank ? 1 : 0,
+        });
+      }
       router.back();
     } catch (e) {
       console.error('[AddFuel]', e);
@@ -159,6 +214,15 @@ export default function AddFuelScreen() {
       focused === field  ? s.inputFocused : undefined,
       errors[field]      ? s.inputError   : undefined,
     ];
+  }
+
+  // ── Загрузка данных редактирования ────────────────────────────────────────
+  if (loadingEdit) {
+    return (
+      <View style={[s.root, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
   }
 
   // ── Рендер ───────────────────────────────────────────────────────────────
@@ -281,7 +345,7 @@ export default function AddFuelScreen() {
           <View style={s.previewRow}>
             <Text style={s.previewLabel}>{t('addFuel.pricePerLiter')}</Text>
             <Text style={[s.previewValue, !pricePerLiter && s.previewDim]}>
-              {pricePerLiter ? `${pricePerLiter} ${currency}` : '—'}
+              {pricePerLiter != null ? formatMoney(pricePerLiter, currency) : '—'}
             </Text>
           </View>
 
@@ -310,14 +374,16 @@ export default function AddFuelScreen() {
           style={s.saveBtnWrapper}
         >
           <LinearGradient
-            colors={theme.gradient.accent.colors}
-            start={theme.gradient.accent.start}
-            end={theme.gradient.accent.end}
+            colors={gradient.accent.colors}
+            start={gradient.accent.start}
+            end={gradient.accent.end}
             style={s.saveBtn}
           >
             {saving
               ? <ActivityIndicator color="#fff" />
-              : <Text style={s.saveBtnText}>{t('addFuel.saveBtn')}</Text>
+              : <Text style={s.saveBtnText}>
+                  {isEdit ? t('common.save') : t('addFuel.saveBtn')}
+                </Text>
             }
           </LinearGradient>
         </TouchableOpacity>
@@ -331,171 +397,174 @@ export default function AddFuelScreen() {
 
 // ─── Стили ──────────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+function makeStyles(th: AppTheme) {
+  const { colors, radius, typography } = th;
+  return StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
 
-  // Шапка
-  header: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    paddingTop:     Platform.OS === 'ios' ? 56 : 48,
-    paddingBottom:  16,
-    paddingHorizontal: 20,
-    backgroundColor: colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backBtn: {
-    width: 36,
-  },
-  backIcon: {
-    color:    colors.accent,
-    fontSize: 32,
-    lineHeight: 36,
-    fontWeight: '300',
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    color:    colors.textPrimary,
-    ...typography.screenTitle,
-  },
-  headerSpacer: { width: 36 },
+    // Шапка
+    header: {
+      flexDirection:  'row',
+      alignItems:     'center',
+      paddingTop:     Platform.OS === 'ios' ? 56 : 48,
+      paddingBottom:  16,
+      paddingHorizontal: 20,
+      backgroundColor: colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    backBtn: {
+      width: 36,
+    },
+    backIcon: {
+      color:    colors.accent,
+      fontSize: 32,
+      lineHeight: 36,
+      fontWeight: '300',
+    },
+    headerTitle: {
+      flex: 1,
+      textAlign: 'center',
+      color:    colors.textPrimary,
+      ...typography.screenTitle,
+    },
+    headerSpacer: { width: 36 },
 
-  // Прокрутка
-  scroll:   { flex: 1 },
-  content:  { padding: 20 },
+    // Прокрутка
+    scroll:   { flex: 1 },
+    content:  { padding: 20 },
 
-  // Лейбл поля
-  label: {
-    color:        colors.textSecondary,
-    ...typography.labelSmall,
-    marginBottom: 6,
-    marginTop:    4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
+    // Лейбл поля
+    label: {
+      color:        colors.textSecondary,
+      ...typography.labelSmall,
+      marginBottom: 6,
+      marginTop:    4,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
 
-  // Поле ввода
-  input: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    borderWidth:     1,
-    borderColor:     colors.border,
-    paddingHorizontal: 16,
-    paddingVertical:   14,
-    color:           colors.textPrimary,
-    ...typography.cardText,
-    marginBottom:    4,
-  },
-  inputFocused: { borderColor: colors.borderAccent },
-  inputError:   { borderColor: colors.statusDue.text },
+    // Поле ввода
+    input: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      borderWidth:     1,
+      borderColor:     colors.border,
+      paddingHorizontal: 16,
+      paddingVertical:   14,
+      color:           colors.textPrimary,
+      ...typography.cardText,
+      marginBottom:    4,
+    },
+    inputFocused: { borderColor: colors.borderAccent },
+    inputError:   { borderColor: colors.statusDue.text },
 
-  // Дата (pressable)
-  dateRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-  },
-  inputText: {
-    color: colors.textPrimary,
-    ...typography.cardText,
-  },
-  dateIcon: { fontSize: 18 },
+    // Дата (pressable)
+    dateRow: {
+      flexDirection:  'row',
+      alignItems:     'center',
+      justifyContent: 'space-between',
+    },
+    inputText: {
+      color: colors.textPrimary,
+      ...typography.cardText,
+    },
+    dateIcon: { fontSize: 18 },
 
-  // iOS "Готово" после spinner
-  doneBtn: {
-    alignSelf:   'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical:   6,
-    marginBottom: 4,
-  },
-  doneBtnText: {
-    color: colors.accent,
-    ...typography.cardTextMedium,
-  },
+    // iOS "Готово" после spinner
+    doneBtn: {
+      alignSelf:   'flex-end',
+      paddingHorizontal: 16,
+      paddingVertical:   6,
+      marginBottom: 4,
+    },
+    doneBtnText: {
+      color: colors.accent,
+      ...typography.cardTextMedium,
+    },
 
-  // Сообщение об ошибке
-  errorText: {
-    color:       colors.statusDue.text,
-    ...typography.labelSmall,
-    marginBottom: 8,
-    marginLeft:   4,
-  },
+    // Сообщение об ошибке
+    errorText: {
+      color:       colors.statusDue.text,
+      ...typography.labelSmall,
+      marginBottom: 8,
+      marginLeft:   4,
+    },
 
-  // Тумблер «Полный бак»
-  toggleRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius:   radius.card,
-    borderWidth:    1,
-    borderColor:    colors.border,
-    paddingHorizontal: 16,
-    paddingVertical:   12,
-    marginTop:      12,
-    marginBottom:   4,
-  },
-  toggleLabel: {
-    color: colors.textPrimary,
-    ...typography.cardText,
-  },
+    // Тумблер «Полный бак»
+    toggleRow: {
+      flexDirection:  'row',
+      alignItems:     'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.surface,
+      borderRadius:   radius.card,
+      borderWidth:    1,
+      borderColor:    colors.border,
+      paddingHorizontal: 16,
+      paddingVertical:   12,
+      marginTop:      12,
+      marginBottom:   4,
+    },
+    toggleLabel: {
+      color: colors.textPrimary,
+      ...typography.cardText,
+    },
 
-  // Блок превью
-  preview: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    borderWidth:     1,
-    borderColor:     colors.borderAccent,
-    padding:         16,
-    marginTop:       16,
-    marginBottom:    24,
-    gap:             10,
-  },
-  previewTitle: {
-    color:        colors.textSecondary,
-    ...typography.sectionHeader,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  previewRow: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
-    alignItems:     'center',
-  },
-  previewLabel: {
-    color: colors.textSecondary,
-    ...typography.label,
-  },
-  previewValue: {
-    color: colors.accent,
-    ...typography.cardTextMedium,
-  },
-  previewDim: {
-    color: colors.textWeak,
-    ...typography.label,
-  },
-  previewSkip: {
-    color: colors.textMuted,
-    ...typography.label,
-    fontStyle: 'italic',
-  },
+    // Блок превью
+    preview: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      borderWidth:     1,
+      borderColor:     colors.borderAccent,
+      padding:         16,
+      marginTop:       16,
+      marginBottom:    24,
+      gap:             10,
+    },
+    previewTitle: {
+      color:        colors.textSecondary,
+      ...typography.sectionHeader,
+      textTransform: 'uppercase',
+      marginBottom: 4,
+    },
+    previewRow: {
+      flexDirection:  'row',
+      justifyContent: 'space-between',
+      alignItems:     'center',
+    },
+    previewLabel: {
+      color: colors.textSecondary,
+      ...typography.label,
+    },
+    previewValue: {
+      color: colors.accent,
+      ...typography.cardTextMedium,
+    },
+    previewDim: {
+      color: colors.textWeak,
+      ...typography.label,
+    },
+    previewSkip: {
+      color: colors.textMuted,
+      ...typography.label,
+      fontStyle: 'italic',
+    },
 
-  // Кнопка сохранения
-  saveBtnWrapper: { borderRadius: radius.card, overflow: 'hidden' },
-  saveBtn: {
-    borderRadius:  radius.card,
-    paddingVertical: 16,
-    alignItems:    'center',
-    justifyContent: 'center',
-  },
-  saveBtnText: {
-    color:    '#ffffff',
-    ...typography.cardTextMedium,
-    letterSpacing: 0.5,
-  },
-});
+    // Кнопка сохранения
+    saveBtnWrapper: { borderRadius: radius.card, overflow: 'hidden' },
+    saveBtn: {
+      borderRadius:  radius.card,
+      paddingVertical: 16,
+      alignItems:    'center',
+      justifyContent: 'center',
+    },
+    saveBtnText: {
+      color:    '#ffffff',
+      ...typography.cardTextMedium,
+      letterSpacing: 0.5,
+    },
+  });
+}

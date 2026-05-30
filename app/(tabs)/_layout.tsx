@@ -15,12 +15,11 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
-import { theme } from '@/constants/theme';
-
-const { colors } = theme;
+import { useAppTheme } from '@/contexts/theme-context';
 
 export default function TabLayout() {
   const { t } = useTranslation();
+  const { colors } = useAppTheme();
 
   return (
     <Tabs

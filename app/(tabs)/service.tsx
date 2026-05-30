@@ -18,7 +18,7 @@
  *  - Создаёт SERVICE_RECORD + сбрасывает last_odometer/last_date регламента
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Modal,
   Platform,
@@ -35,8 +35,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
-import { theme } from '@/constants/theme';
-import { currencySymbol } from '@/constants/currencies';
+import { AppTheme } from '@/constants/theme';
+import { useAppTheme } from '@/contexts/theme-context';
+import { currencySymbol, formatMoney } from '@/constants/currencies';
 import {
   carRepo, serviceRepo, reminderRepo,
   Car, ServiceRecord, Reminder,
@@ -45,8 +46,6 @@ import {
   calcReminderRow, STATUS_ORDER,
   type StatusKind, type ReminderRow,
 } from '@/utils/reminders';
-
-const { colors, radius, typography, gradient } = theme;
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
@@ -65,29 +64,33 @@ function parseNum(s: string): number {
   return parseFloat(s.replace(',', '.'));
 }
 
-// ─── Вспомогательные цвета ───────────────────────────────────────────────────
-
-const STATUS_TEXT: Record<StatusKind, string> = {
-  due:  colors.statusDue.text,
-  soon: colors.statusSoon.text,
-  ok:   colors.statusOk.text,
-};
-const STATUS_BG: Record<StatusKind, string> = {
-  due:  colors.statusDue.background,
-  soon: colors.statusSoon.background,
-  ok:   colors.statusOk.background,
-};
-const STATUS_BAR: Record<StatusKind, string> = {
-  due:  colors.statusDue.bar,
-  soon: colors.statusSoon.bar,
-  ok:   colors.statusOk.bar,
-};
-
 // ─── Компонент ───────────────────────────────────────────────────────────────
 
 export default function ServiceScreen() {
   const { t, i18n } = useTranslation();
   const locale = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
+
+  const th = useAppTheme();
+  const { colors, radius, typography, gradient } = th;
+  const s = useMemo(() => makeStyles(th), [th]);
+
+  // ── Вспомогательные цвета ───────────────────────────────────────────────────
+
+  const STATUS_TEXT: Record<StatusKind, string> = {
+    due:  colors.statusDue.text,
+    soon: colors.statusSoon.text,
+    ok:   colors.statusOk.text,
+  };
+  const STATUS_BG: Record<StatusKind, string> = {
+    due:  colors.statusDue.background,
+    soon: colors.statusSoon.background,
+    ok:   colors.statusOk.background,
+  };
+  const STATUS_BAR: Record<StatusKind, string> = {
+    due:  colors.statusDue.bar,
+    soon: colors.statusSoon.bar,
+    ok:   colors.statusOk.bar,
+  };
 
   // ── Основные данные ───────────────────────────────────────────────────────
   const [car,     setCar]     = useState<Car | null>(null);
@@ -365,7 +368,7 @@ export default function ServiceScreen() {
                   </View>
                   {rec.cost > 0 && (
                     <Text style={s.historyCost}>
-                      {rec.cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {sym}
+                      {formatMoney(rec.cost, car?.currency ?? '')}
                     </Text>
                   )}
                 </View>
@@ -518,253 +521,256 @@ export default function ServiceScreen() {
 
 // ─── Стили ───────────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  root:  { flex: 1, backgroundColor: colors.background },
-  scroll: { flex: 1 },
-  content: {
-    padding:       16,
-    paddingTop:    Platform.OS === 'ios' ? 56 : 48,
-    paddingBottom: 40,
-  },
-  center: {
-    flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-  loadingText: { color: colors.textSecondary, ...typography.cardText },
+function makeStyles(th: AppTheme) {
+  const { colors, radius, typography } = th;
+  return StyleSheet.create({
+    root:  { flex: 1, backgroundColor: colors.background },
+    scroll: { flex: 1 },
+    content: {
+      padding:       16,
+      paddingTop:    Platform.OS === 'ios' ? 56 : 48,
+      paddingBottom: 40,
+    },
+    center: {
+      flex: 1, justifyContent: 'center', alignItems: 'center',
+      backgroundColor: colors.background,
+    },
+    loadingText: { color: colors.textSecondary, ...typography.cardText },
 
-  // ── Шапка ────────────────────────────────────────────────────────────────
-  topRow: {
-    marginBottom: 20,
-  },
-  screenTitle: {
-    color: colors.textPrimary,
-    ...typography.screenTitle,
-  },
+    // ── Шапка ────────────────────────────────────────────────────────────────
+    topRow: {
+      marginBottom: 20,
+    },
+    screenTitle: {
+      color: colors.textPrimary,
+      ...typography.screenTitle,
+    },
 
-  // ── Карточка регламента ───────────────────────────────────────────────────
-  reminderCard: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    borderWidth:     1,
-    borderColor:     colors.border,
-    padding:         16,
-    marginBottom:    12,
-  },
-  cardHeader: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-    marginBottom:   12,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    flex:          1,
-    marginRight:   8,
-  },
-  cardTitle: {
-    color:      colors.textPrimary,
-    ...typography.cardTextMedium,
-    flex:       1,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical:    4,
-    borderRadius:      radius.badge,
-    flexShrink:        0,
-  },
-  statusText: {
-    fontSize:   11,
-    fontWeight: '500' as const,
-  },
+    // ── Карточка регламента ───────────────────────────────────────────────────
+    reminderCard: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      borderWidth:     1,
+      borderColor:     colors.border,
+      padding:         16,
+      marginBottom:    12,
+    },
+    cardHeader: {
+      flexDirection:  'row',
+      alignItems:     'center',
+      justifyContent: 'space-between',
+      marginBottom:   12,
+    },
+    cardTitleRow: {
+      flexDirection: 'row',
+      alignItems:    'center',
+      flex:          1,
+      marginRight:   8,
+    },
+    cardTitle: {
+      color:      colors.textPrimary,
+      ...typography.cardTextMedium,
+      flex:       1,
+    },
+    statusBadge: {
+      paddingHorizontal: 10,
+      paddingVertical:    4,
+      borderRadius:      radius.badge,
+      flexShrink:        0,
+    },
+    statusText: {
+      fontSize:   11,
+      fontWeight: '500' as const,
+    },
 
-  // ── Прогресс-бар ─────────────────────────────────────────────────────────
-  progressTrack: {
-    height:          6,
-    borderRadius:    3,
-    backgroundColor: colors.border,
-    marginBottom:    12,
-    overflow:        'hidden',
-  },
-  progressFill: {
-    height:       6,
-    borderRadius: 3,
-  },
+    // ── Прогресс-бар ─────────────────────────────────────────────────────────
+    progressTrack: {
+      height:          6,
+      borderRadius:    3,
+      backgroundColor: colors.border,
+      marginBottom:    12,
+      overflow:        'hidden',
+    },
+    progressFill: {
+      height:       6,
+      borderRadius: 3,
+    },
 
-  // ── Детали карточки ───────────────────────────────────────────────────────
-  cardDetails: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-  },
-  remainingText: {
-    fontSize:     14,
-    fontWeight:   '500' as const,
-    marginBottom: 2,
-  },
-  intervalText: {
-    color:    colors.textWeak,
-    fontSize: 11,
-    fontWeight: '400' as const,
-  },
-  doneBtn: {
-    paddingHorizontal: 16,
-    paddingVertical:    9,
-    borderRadius:      radius.badge + 3,
-  },
-  doneBtnText: {
-    color:      '#ffffff',
-    fontSize:   13,
-    fontWeight: '500' as const,
-  },
+    // ── Детали карточки ───────────────────────────────────────────────────────
+    cardDetails: {
+      flexDirection:  'row',
+      alignItems:     'center',
+      justifyContent: 'space-between',
+    },
+    remainingText: {
+      fontSize:     14,
+      fontWeight:   '500' as const,
+      marginBottom: 2,
+    },
+    intervalText: {
+      color:    colors.textWeak,
+      fontSize: 11,
+      fontWeight: '400' as const,
+    },
+    doneBtn: {
+      paddingHorizontal: 16,
+      paddingVertical:    9,
+      borderRadius:      radius.badge + 3,
+    },
+    doneBtnText: {
+      color:      '#ffffff',
+      fontSize:   13,
+      fontWeight: '500' as const,
+    },
 
-  // ── Пустое состояние ─────────────────────────────────────────────────────
-  emptyCard: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    paddingVertical: 40,
-    alignItems:      'center',
-    gap:             12,
-    marginBottom:    16,
-  },
-  emptyText: {
-    color:     colors.textSecondary,
-    ...typography.cardText,
-    textAlign: 'center',
-  },
+    // ── Пустое состояние ─────────────────────────────────────────────────────
+    emptyCard: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      paddingVertical: 40,
+      alignItems:      'center',
+      gap:             12,
+      marginBottom:    16,
+    },
+    emptyText: {
+      color:     colors.textSecondary,
+      ...typography.cardText,
+      textAlign: 'center',
+    },
 
-  // ── История работ ─────────────────────────────────────────────────────────
-  sectionHeader: {
-    color:         colors.textWeak,
-    ...typography.sectionHeader,
-    textTransform: 'uppercase',
-    marginBottom:  8,
-  },
-  historyCard: {
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    paddingVertical: 4,
-    marginBottom:    16,
-  },
-  historyRow: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    justifyContent:    'space-between',
-    paddingVertical:   13,
-    paddingHorizontal: 14,
-  },
-  historyBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  historyLeft: { flex: 1, marginRight: 8 },
-  historyTitle: {
-    color:        colors.textPrimary,
-    ...typography.cardText,
-    marginBottom: 2,
-  },
-  historyMeta: {
-    color: colors.textSecondary,
-    ...typography.label,
-  },
-  historyCost: {
-    color:      colors.textSecondary,
-    ...typography.label,
-    flexShrink: 0,
-  },
-  noHistoryText: {
-    color:   colors.textSecondary,
-    ...typography.cardText,
-    padding: 14,
-  },
+    // ── История работ ─────────────────────────────────────────────────────────
+    sectionHeader: {
+      color:         colors.textWeak,
+      ...typography.sectionHeader,
+      textTransform: 'uppercase',
+      marginBottom:  8,
+    },
+    historyCard: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      paddingVertical: 4,
+      marginBottom:    16,
+    },
+    historyRow: {
+      flexDirection:     'row',
+      alignItems:        'center',
+      justifyContent:    'space-between',
+      paddingVertical:   13,
+      paddingHorizontal: 14,
+    },
+    historyBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    historyLeft: { flex: 1, marginRight: 8 },
+    historyTitle: {
+      color:        colors.textPrimary,
+      ...typography.cardText,
+      marginBottom: 2,
+    },
+    historyMeta: {
+      color: colors.textSecondary,
+      ...typography.label,
+    },
+    historyCost: {
+      color:      colors.textSecondary,
+      ...typography.label,
+      flexShrink: 0,
+    },
+    noHistoryText: {
+      color:   colors.textSecondary,
+      ...typography.cardText,
+      padding: 14,
+    },
 
-  // ── Кнопка «+ Добавить регламент» ────────────────────────────────────────
-  addReminderBtn: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    justifyContent:  'center',
-    backgroundColor: colors.surface,
-    borderRadius:    radius.card,
-    borderWidth:     1,
-    borderColor:     colors.border,
-    paddingVertical: 14,
-    marginBottom:    8,
-  },
-  addReminderText: {
-    color:      colors.accent,
-    ...typography.cardText,
-  },
+    // ── Кнопка «+ Добавить регламент» ────────────────────────────────────────
+    addReminderBtn: {
+      flexDirection:   'row',
+      alignItems:      'center',
+      justifyContent:  'center',
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      borderWidth:     1,
+      borderColor:     colors.border,
+      paddingVertical: 14,
+      marginBottom:    8,
+    },
+    addReminderText: {
+      color:      colors.accent,
+      ...typography.cardText,
+    },
 
-  // ── Модальное окно «Сделано» ──────────────────────────────────────────────
-  modalOverlay: {
-    flex:            1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent:  'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius:  20,
-    borderTopRightRadius: 20,
-    padding:         20,
-    paddingBottom:   Platform.OS === 'ios' ? 36 : 20,
-    maxHeight:       '85%',
-  },
-  modalHeader: {
-    marginBottom: 20,
-    paddingRight: 36, // для кнопки закрытия
-  },
-  modalTitle: {
-    color:        colors.textPrimary,
-    ...typography.screenTitle,
-    marginBottom: 2,
-  },
-  modalSubtitle: {
-    color: colors.textSecondary,
-    ...typography.label,
-  },
-  modalCloseBtn: {
-    position: 'absolute',
-    right:    0,
-    top:      0,
-  },
-  modalFieldLabel: {
-    color:         colors.textSecondary,
-    ...typography.labelSmall,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop:     12,
-    marginBottom:  6,
-  },
-  modalInput: {
-    backgroundColor:   colors.background,
-    borderRadius:      radius.card,
-    borderWidth:       1,
-    borderColor:       colors.border,
-    paddingHorizontal: 16,
-    paddingVertical:   13,
-    color:             colors.textPrimary,
-    ...typography.cardText,
-  },
-  modalInputFocused: { borderColor: colors.borderAccent },
-  modalInputMultiline: { minHeight: 68, paddingTop: 12 },
-  modalInputText:  { color: colors.textPrimary, ...typography.cardText },
+    // ── Модальное окно «Сделано» ──────────────────────────────────────────────
+    modalOverlay: {
+      flex:            1,
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      justifyContent:  'flex-end',
+    },
+    modalSheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius:  20,
+      borderTopRightRadius: 20,
+      padding:         20,
+      paddingBottom:   Platform.OS === 'ios' ? 36 : 20,
+      maxHeight:       '85%',
+    },
+    modalHeader: {
+      marginBottom: 20,
+      paddingRight: 36, // для кнопки закрытия
+    },
+    modalTitle: {
+      color:        colors.textPrimary,
+      ...typography.screenTitle,
+      marginBottom: 2,
+    },
+    modalSubtitle: {
+      color: colors.textSecondary,
+      ...typography.label,
+    },
+    modalCloseBtn: {
+      position: 'absolute',
+      right:    0,
+      top:      0,
+    },
+    modalFieldLabel: {
+      color:         colors.textSecondary,
+      ...typography.labelSmall,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginTop:     12,
+      marginBottom:  6,
+    },
+    modalInput: {
+      backgroundColor:   colors.background,
+      borderRadius:      radius.card,
+      borderWidth:       1,
+      borderColor:       colors.border,
+      paddingHorizontal: 16,
+      paddingVertical:   13,
+      color:             colors.textPrimary,
+      ...typography.cardText,
+    },
+    modalInputFocused: { borderColor: colors.borderAccent },
+    modalInputMultiline: { minHeight: 68, paddingTop: 12 },
+    modalInputText:  { color: colors.textPrimary, ...typography.cardText },
 
-  dateRow: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-  },
+    dateRow: {
+      flexDirection:  'row',
+      alignItems:     'center',
+      justifyContent: 'space-between',
+    },
 
-  iosDoneBtn: {
-    alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4,
-  },
-  iosDoneBtnText: { color: colors.accent, ...typography.cardTextMedium },
+    iosDoneBtn: {
+      alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4,
+    },
+    iosDoneBtnText: { color: colors.accent, ...typography.cardTextMedium },
 
-  confirmWrapper: { marginTop: 20 },
-  confirmBtn: {
-    borderRadius:    radius.card,
-    paddingVertical: 16,
-    alignItems:      'center',
-  },
-  confirmBtnText: { color: '#ffffff', ...typography.cardTextMedium },
-});
+    confirmWrapper: { marginTop: 20 },
+    confirmBtn: {
+      borderRadius:    radius.card,
+      paddingVertical: 16,
+      alignItems:      'center',
+    },
+    confirmBtnText: { color: '#ffffff', ...typography.cardTextMedium },
+  });
+}

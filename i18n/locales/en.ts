@@ -193,6 +193,49 @@ const en: TranslationKeys = {
     overdueDays:  '{{n}} days overdue',
   },
 
+  backup: {
+    exportSuccess:       'Backup file created',
+    exportError:         'Failed to create backup',
+    importConfirmTitle:  'Restore data?',
+    importConfirmMsg:    'This will overwrite ALL current app data. Continue?',
+    importConfirmOk:     'Restore',
+    importSuccess:       'Data restored',
+    importError:         'Restore failed',
+    importCancelled:     'Cancelled',
+    fuel:                'fuel entries',
+    expense:             'expenses',
+    service:             'service records',
+  },
+
+  historyActions: {
+    deleteTitle:   'Delete entry?',
+    deleteMsg:     'This cannot be undone.',
+    deleteConfirm: 'Delete',
+    edit:          'Edit',
+    delete:        'Delete',
+  },
+
+  categoriesScreen: {
+    title:            'Expense categories',
+    addTitle:         'New category',
+    editTitle:        'Edit',
+    namePlaceholder:  'Name',
+    iconLabel:        'Icon',
+    saveBtn:          'Save',
+    errorHasExpenses: 'Delete or move expenses of this category first',
+  },
+
+  selectCurrency: {
+    title:  'Currency',
+    search: 'Search…',
+  },
+
+  selectLanguage: {
+    title: 'Language',
+    ru:    'Русский',
+    en:    'English',
+  },
+
   dbCheck: {
     title:             '🗄 Database Check',
     sectionCar:        'CAR',

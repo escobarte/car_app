@@ -10,7 +10,7 @@
  *  5. Кнопка сохранения
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -25,15 +25,18 @@ import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { theme } from '@/constants/theme';
+import { AppTheme } from '@/constants/theme';
+import { useAppTheme } from '@/contexts/theme-context';
 import { reminderRepo } from '@/db';
-
-const { colors, radius, typography, gradient } = theme;
 
 type ReminderType = 'mileage' | 'time';
 
 export default function AddReminderScreen() {
   const { t } = useTranslation();
+
+  const th = useAppTheme();
+  const { colors, radius, typography, gradient } = th;
+  const s = useMemo(() => makeStyles(th), [th]);
 
   // ── Поля формы ────────────────────────────────────────────────────────────
   const [name,       setName]       = useState('');
@@ -246,96 +249,99 @@ export default function AddReminderScreen() {
 
 // ─── Стили ───────────────────────────────────────────────────────────────────
 
-const s = StyleSheet.create({
-  root:  { flex: 1, backgroundColor: colors.background },
-  scroll: { flex: 1 },
+function makeStyles(th: AppTheme) {
+  const { colors, radius, typography } = th;
+  return StyleSheet.create({
+    root:  { flex: 1, backgroundColor: colors.background },
+    scroll: { flex: 1 },
 
-  // ── Шапка ──────────────────────────────────────────────────────────────
-  header: {
-    flexDirection:     'row',
-    alignItems:        'center',
-    paddingTop:        Platform.OS === 'ios' ? 56 : 48,
-    paddingBottom:     16,
-    paddingHorizontal: 20,
-    backgroundColor:   colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backBtn:      { width: 36 },
-  backIcon:     { color: colors.accent, fontSize: 32, lineHeight: 36, fontWeight: '300' },
-  headerTitle:  {
-    flex: 1, textAlign: 'center',
-    color: colors.textPrimary, ...typography.screenTitle,
-  },
-  headerSpacer: { width: 36 },
+    // ── Шапка ──────────────────────────────────────────────────────────────
+    header: {
+      flexDirection:     'row',
+      alignItems:        'center',
+      paddingTop:        Platform.OS === 'ios' ? 56 : 48,
+      paddingBottom:     16,
+      paddingHorizontal: 20,
+      backgroundColor:   colors.background,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    backBtn:      { width: 36 },
+    backIcon:     { color: colors.accent, fontSize: 32, lineHeight: 36, fontWeight: '300' },
+    headerTitle:  {
+      flex: 1, textAlign: 'center',
+      color: colors.textPrimary, ...typography.screenTitle,
+    },
+    headerSpacer: { width: 36 },
 
-  content: {
-    paddingHorizontal: 16,
-    paddingTop:        20,
-    paddingBottom:     48,
-  },
+    content: {
+      paddingHorizontal: 16,
+      paddingTop:        20,
+      paddingBottom:     48,
+    },
 
-  // ── Поля ввода ──────────────────────────────────────────────────────────
-  fieldLabel: {
-    color:         colors.textSecondary,
-    ...typography.labelSmall,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop:     16,
-    marginBottom:  6,
-  },
-  input: {
-    backgroundColor:   colors.surface,
-    borderRadius:      radius.card,
-    borderWidth:       1,
-    borderColor:       colors.border,
-    paddingHorizontal: 16,
-    paddingVertical:   14,
-    color:             colors.textPrimary,
-    ...typography.cardText,
-    marginBottom:      2,
-  },
-  inputFocused: { borderColor: colors.borderAccent },
-  inputError:   { borderColor: colors.statusDue.text },
+    // ── Поля ввода ──────────────────────────────────────────────────────────
+    fieldLabel: {
+      color:         colors.textSecondary,
+      ...typography.labelSmall,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginTop:     16,
+      marginBottom:  6,
+    },
+    input: {
+      backgroundColor:   colors.surface,
+      borderRadius:      radius.card,
+      borderWidth:       1,
+      borderColor:       colors.border,
+      paddingHorizontal: 16,
+      paddingVertical:   14,
+      color:             colors.textPrimary,
+      ...typography.cardText,
+      marginBottom:      2,
+    },
+    inputFocused: { borderColor: colors.borderAccent },
+    inputError:   { borderColor: colors.statusDue.text },
 
-  // ── Переключатель типа ──────────────────────────────────────────────────
-  typeRow: {
-    flexDirection: 'row',
-    gap:           8,
-  },
-  typeBtn: {
-    flex:              1,
-    paddingVertical:   13,
-    borderRadius:      radius.card,
-    borderWidth:       1,
-    borderColor:       colors.border,
-    backgroundColor:   colors.surface,
-    alignItems:        'center',
-  },
-  typeBtnActive: {
-    borderColor:     colors.borderAccent,
-    backgroundColor: colors.activeCard,
-  },
-  typeBtnText: {
-    color:      colors.textSecondary,
-    ...typography.cardText,
-  },
-  typeBtnTextActive: { color: colors.accent },
+    // ── Переключатель типа ──────────────────────────────────────────────────
+    typeRow: {
+      flexDirection: 'row',
+      gap:           8,
+    },
+    typeBtn: {
+      flex:              1,
+      paddingVertical:   13,
+      borderRadius:      radius.card,
+      borderWidth:       1,
+      borderColor:       colors.border,
+      backgroundColor:   colors.surface,
+      alignItems:        'center',
+    },
+    typeBtnActive: {
+      borderColor:     colors.borderAccent,
+      backgroundColor: colors.activeCard,
+    },
+    typeBtnText: {
+      color:      colors.textSecondary,
+      ...typography.cardText,
+    },
+    typeBtnTextActive: { color: colors.accent },
 
-  // ── Ошибка ─────────────────────────────────────────────────────────────
-  errorText: {
-    color:     colors.statusDue.text,
-    ...typography.labelSmall,
-    marginTop: 2,
-    marginBottom: 4,
-  },
+    // ── Ошибка ─────────────────────────────────────────────────────────────
+    errorText: {
+      color:     colors.statusDue.text,
+      ...typography.labelSmall,
+      marginTop: 2,
+      marginBottom: 4,
+    },
 
-  // ── Кнопка сохранения ───────────────────────────────────────────────────
-  saveWrapper: { marginTop: 32 },
-  saveBtn: {
-    borderRadius:    radius.card,
-    paddingVertical: 16,
-    alignItems:      'center',
-  },
-  saveBtnText: { color: '#ffffff', ...typography.cardTextMedium },
-});
+    // ── Кнопка сохранения ───────────────────────────────────────────────────
+    saveWrapper: { marginTop: 32 },
+    saveBtn: {
+      borderRadius:    radius.card,
+      paddingVertical: 16,
+      alignItems:      'center',
+    },
+    saveBtnText: { color: '#ffffff', ...typography.cardTextMedium },
+  });
+}
