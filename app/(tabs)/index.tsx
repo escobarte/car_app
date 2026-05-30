@@ -1,14 +1,16 @@
 /**
- * Главный экран — Дашборд (Этап 4).
+ * Главный экран — Дашборд (Этап 4, переработан в Этапе 10).
  * Разделы ТЗ: 4.1, 6.3, 6.4.
  * Дизайн: docs/дизайн_система.md.
  *
  * Блоки сверху вниз:
- *  1. Шапка: месяц + пробег + шестерёнка (заглушка)
+ *  1. Шапка: месяц + пробег + шестерёнка (→ Настройки)
  *  2. Градиентный блок: расходы за текущий месяц (ТЗ 6.4)
  *  3. Две карточки: средняя цена литра + средний расход
- *  4. Секция напоминаний с цветами статусов (ТЗ 6.3)
- *  5. Кнопки быстрого доступа (заглушки Этапов 2–3)
+ *  4. Секция напоминаний — каждое отдельной карточкой (ТЗ 6.3)
+ *
+ * Кнопки-заглушки убраны — навигация через Tab Bar и кнопку «+».
+ * Все цвета из theme, весь текст через t().
  */
 
 import { useCallback, useMemo, useState } from 'react';
@@ -35,22 +37,17 @@ import {
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
-/** 'YYYY-MM' текущего месяца */
 function currentYearMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-/** Локализованное название месяца + год: 'Май 2026' */
 function formatCurrentMonth(locale: string): string {
   const s = new Date().toLocaleDateString(locale, { month: 'long', year: 'numeric' });
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** Сумма массива чисел */
 const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
-
-/** Среднее массива чисел (null если массив пустой) */
 function avg(arr: number[]): number | null {
   return arr.length > 0 ? sum(arr) / arr.length : null;
 }
@@ -60,34 +57,41 @@ function avg(arr: number[]): number | null {
 type StatusKind = 'ok' | 'soon' | 'due';
 
 type ReminderRow = {
-  reminder: Reminder;
-  remaining: number;   // км или дней; < 0 означает просрочку
-  unit: 'km' | 'days';
-  status: StatusKind;
+  reminder:  Reminder;
+  remaining: number;   // км или дней; < 0 → просрочка
+  unit:      'km' | 'days';
+  status:    StatusKind;
 };
 
-// ─── Расчёт статуса напоминания (ТЗ 6.3) ────────────────────────────────────
+// ─── Расчёт статуса ─────────────────────────────────────────────────────────
 
-function calcReminderStatus(r: Reminder, currentOdometer: number, today: Date): ReminderRow {
+function calcStatus(r: Reminder, currentOdometer: number, today: Date): ReminderRow {
   if (r.type === 'mileage') {
     const remaining = (r.last_odometer + (r.interval_km ?? 0)) - currentOdometer;
     const status: StatusKind =
-      remaining <= 0              ? 'due'  :
-      remaining <= r.warn_before  ? 'soon' : 'ok';
+      remaining <= 0             ? 'due'  :
+      remaining <= r.warn_before ? 'soon' : 'ok';
     return { reminder: r, remaining, unit: 'km', status };
   }
 
-  // time-based
   const lastDate = new Date(r.last_date + 'T00:00:00');
   const dueDate  = new Date(lastDate.getTime() + (r.interval_days ?? 0) * 86_400_000);
   const remaining = Math.ceil((dueDate.getTime() - today.getTime()) / 86_400_000);
   const status: StatusKind =
-    remaining <= 0              ? 'due'  :
-    remaining <= r.warn_before  ? 'soon' : 'ok';
+    remaining <= 0             ? 'due'  :
+    remaining <= r.warn_before ? 'soon' : 'ok';
   return { reminder: r, remaining, unit: 'days', status };
 }
 
 const STATUS_ORDER: Record<StatusKind, number> = { due: 0, soon: 1, ok: 2 };
+
+// ─── Иконка напоминания ─────────────────────────────────────────────────────
+
+function reminderIcon(row: ReminderRow): React.ComponentProps<typeof Ionicons>['name'] {
+  if (row.status === 'due')  return 'warning-outline';
+  if (row.status === 'soon') return 'time-outline';
+  return row.reminder.type === 'mileage' ? 'speedometer-outline' : 'calendar-outline';
+}
 
 // ─── Компонент ─────────────────────────────────────────────────────────────
 
@@ -100,14 +104,14 @@ export default function DashboardScreen() {
   const s = useMemo(() => makeStyles(th), [th]);
 
   // ── Состояние ─────────────────────────────────────────────────────────────
-  const [car,         setCar]         = useState<Car | null>(null);
-  const [monthlyTotal,setMonthlyTotal]= useState<number>(0);
-  const [avgPrice,    setAvgPrice]    = useState<number | null>(null);
-  const [avgCons,     setAvgCons]     = useState<number | null>(null);
-  const [remRows,     setRemRows]     = useState<ReminderRow[]>([]);
-  const [loading,     setLoading]     = useState(true);
+  const [car,          setCar]          = useState<Car | null>(null);
+  const [monthlyTotal, setMonthlyTotal] = useState<number>(0);
+  const [avgPrice,     setAvgPrice]     = useState<number | null>(null);
+  const [avgCons,      setAvgCons]      = useState<number | null>(null);
+  const [remRows,      setRemRows]      = useState<ReminderRow[]>([]);
+  const [loading,      setLoading]      = useState(true);
 
-  // ── Загрузка данных ───────────────────────────────────────────────────────
+  // ── Загрузка ─────────────────────────────────────────────────────────────
 
   useFocusEffect(
     useCallback(() => {
@@ -117,44 +121,38 @@ export default function DashboardScreen() {
         setLoading(true);
 
         const ym = currentYearMonth();
-        const [
-          carData, fuelMonth, expMonth,
-          allSvc, allFuel, reminders,
-        ] = await Promise.all([
-          carRepo.getCar(),
-          fuelRepo.getFuelEntriesByMonth(ym),
-          expenseRepo.getExpensesByMonth(ym),
-          serviceRepo.getAllServiceRecords(),
-          fuelRepo.getAllFuelEntries(),
-          reminderRepo.getAllReminders(),
-        ]);
+        const [carData, fuelMonth, expMonth, allSvc, allFuel, reminders] =
+          await Promise.all([
+            carRepo.getCar(),
+            fuelRepo.getFuelEntriesByMonth(ym),
+            expenseRepo.getExpensesByMonth(ym),
+            serviceRepo.getAllServiceRecords(),
+            fuelRepo.getAllFuelEntries(),
+            reminderRepo.getAllReminders(),
+          ]);
 
         if (!active) return;
 
-        // ── Сумма за месяц (ТЗ 6.4) ─────────────────────────────────────────
-        const svcMonth = allSvc.filter((s) => s.date.startsWith(ym));
+        const svcMonth = allSvc.filter((sv) => sv.date.startsWith(ym));
         const total =
           sum(fuelMonth.map((f) => f.total_cost)) +
           sum(expMonth.map((e) => e.amount)) +
-          sum(svcMonth.map((s) => s.cost));
+          sum(svcMonth.map((sv) => sv.cost));
 
-        // ── Средняя цена за литр (текущий месяц) ────────────────────────────
         const prices = fuelMonth
           .filter((f) => f.price_per_liter > 0)
           .map((f) => f.price_per_liter);
 
-        // ── Средний расход (все полные заправки, за все время) ───────────────
         const consumptions = allFuel
           .filter((f): f is FuelEntry & { consumption: number } => f.consumption != null)
           .map((f) => f.consumption);
 
-        // ── Напоминания с вычисленным статусом ──────────────────────────────
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const currentOdo = carData?.current_odometer ?? 0;
 
         const rows: ReminderRow[] = reminders
-          .map((r) => calcReminderStatus(r, currentOdo, today))
+          .map((r) => calcStatus(r, currentOdo, today))
           .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
 
         setCar(carData);
@@ -170,38 +168,23 @@ export default function DashboardScreen() {
     }, [])
   );
 
-  // ── Производные значения ──────────────────────────────────────────────────
+  // ── Производные ──────────────────────────────────────────────────────────
 
-  const currCode    = car?.currency ?? '';
-  const monthLabel  = useMemo(() => formatCurrentMonth(locale), [locale]);
-  const odometer    = car?.current_odometer.toLocaleString() ?? '—';
-
-  // ── Вспомогательные функции для текста напоминаний ───────────────────────
+  const currCode   = car?.currency ?? '';
+  const monthLabel = useMemo(() => formatCurrentMonth(locale), [locale]);
+  const odometer   = car?.current_odometer.toLocaleString() ?? '—';
 
   function reminderLabel(row: ReminderRow): string {
     const n = Math.abs(row.remaining);
     if (row.unit === 'km') {
       return row.remaining <= 0
-        ? t('service.overdueKm',      { n })
-        : t('service.remainingKm',    { n });
+        ? t('service.overdueKm',  { n })
+        : t('service.remainingKm', { n });
     }
     return row.remaining <= 0
-      ? t('service.overdueDays',  { n })
-      : t('service.remainingDays',{ n });
+      ? t('service.overdueDays',   { n })
+      : t('service.remainingDays', { n });
   }
-
-  // ── Цвет строки напоминания ───────────────────────────────────────────────
-
-  const STATUS_COLORS: Record<StatusKind, string> = {
-    due:  colors.statusDue.text,
-    soon: colors.statusSoon.text,
-    ok:   colors.statusOk.text,
-  };
-  const STATUS_BG: Record<StatusKind, string> = {
-    due:  colors.statusDue.background,
-    soon: colors.statusSoon.background,
-    ok:   colors.statusOk.background,
-  };
 
   // ── Загрузка ─────────────────────────────────────────────────────────────
 
@@ -221,7 +204,7 @@ export default function DashboardScreen() {
       contentContainerStyle={s.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── 1. Шапка: месяц + пробег + шестерёнка ─────────────────────── */}
+      {/* ── 1. Шапка ─────────────────────────────────────────────────── */}
       <View style={s.topRow}>
         <View>
           <Text style={s.monthLabel}>{monthLabel}</Text>
@@ -229,7 +212,6 @@ export default function DashboardScreen() {
             {t('dashboard.odometer')}: {odometer} {t('common.km')}
           </Text>
         </View>
-        {/* Шестерёнка — заглушка до Этапа 9 (Настройки) */}
         <TouchableOpacity
           style={s.gearBtn}
           activeOpacity={0.7}
@@ -240,7 +222,7 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── 2. Градиентный блок: расходы за месяц ─────────────────────── */}
+      {/* ── 2. Градиентный блок суммы ─────────────────────────────────── */}
       <LinearGradient
         colors={gradient.accent.colors}
         start={gradient.accent.start}
@@ -248,12 +230,10 @@ export default function DashboardScreen() {
         style={s.totalBlock}
       >
         <Text style={s.totalLabel}>{t('dashboard.thisMonth')}</Text>
-        <Text style={s.totalAmount}>
-          {formatMoney(monthlyTotal, currCode)}
-        </Text>
+        <Text style={s.totalAmount}>{formatMoney(monthlyTotal, currCode)}</Text>
       </LinearGradient>
 
-      {/* ── 3. Карточки: средняя цена + средний расход ────────────────── */}
+      {/* ── 3. Карточки статистики ─────────────────────────────────────── */}
       <View style={s.statsRow}>
         <View style={[s.statCard, { marginRight: 8 }]}>
           <Text style={s.statTitle}>{t('dashboard.avgFuelPrice')}</Text>
@@ -276,80 +256,81 @@ export default function DashboardScreen() {
       <Text style={s.sectionHeader}>{t('dashboard.reminders')}</Text>
 
       {remRows.length === 0 ? (
-        <View style={s.card}>
-          <Text style={s.noReminders}>{t('dashboard.noReminders')}</Text>
+        <View style={[s.reminderCard, s.reminderCardOk]}>
+          <View style={[s.statusDot, { backgroundColor: colors.statusOk.background }]}>
+            <View style={[s.statusDotInner, { backgroundColor: colors.statusOk.bar }]} />
+          </View>
+          <Text style={[s.noReminders, { color: colors.statusOk.text }]}>
+            {t('dashboard.noReminders')}
+          </Text>
         </View>
       ) : (
-        <View style={s.card}>
-          {remRows.map((row, idx) => {
-            const color = STATUS_COLORS[row.status];
-            const bg    = STATUS_BG[row.status];
+        <View style={s.reminderList}>
+          {remRows.map((row) => {
+            const isDue  = row.status === 'due';
+            const isSoon = row.status === 'soon';
+
+            const statusColors = isDue  ? colors.statusDue  :
+                                 isSoon ? colors.statusSoon : colors.statusOk;
+
+            const borderColor = isDue
+              ? colors.borderAccent          // синяя обводка = «требует внимания»
+              : isSoon
+              ? colors.statusSoon.background
+              : colors.border;
+
             return (
               <View
                 key={row.reminder.id}
                 style={[
-                  s.reminderRow,
-                  idx < remRows.length - 1 && s.reminderBorder,
+                  s.reminderCard,
+                  {
+                    borderColor,
+                    // iOS glow для просроченных
+                    shadowColor:   isDue ? colors.borderAccent : 'transparent',
+                    shadowOffset:  { width: 0, height: 0 },
+                    shadowOpacity: isDue ? 0.55 : 0,
+                    shadowRadius:  isDue ? 8    : 0,
+                    elevation:     isDue ? 6    : 0,
+                  },
                 ]}
               >
-                {/* Цветная точка-индикатор */}
-                <View style={[s.dot, { backgroundColor: bg }]}>
-                  <View style={[s.dotInner, { backgroundColor: color }]} />
+                {/* Левый индикатор статуса */}
+                <View
+                  style={[
+                    s.statusDot,
+                    { backgroundColor: statusColors.background },
+                  ]}
+                >
+                  <View
+                    style={[s.statusDotInner, { backgroundColor: statusColors.bar }]}
+                  />
                 </View>
 
-                {/* Название регламента */}
-                <Text style={s.reminderTitle} numberOfLines={1}>
-                  {row.reminder.title}
-                </Text>
+                {/* Центр: название + статус */}
+                <View style={s.reminderCenter}>
+                  <Text style={s.reminderTitle} numberOfLines={1}>
+                    {row.reminder.title}
+                  </Text>
+                  <Text style={[s.reminderSub, { color: statusColors.text }]}>
+                    {reminderLabel(row)}
+                  </Text>
+                </View>
 
-                {/* Остаток / просрочка */}
-                <Text style={[s.reminderStatus, { color }]}>
-                  {reminderLabel(row)}
-                </Text>
+                {/* Правая иконка типа задачи */}
+                <Ionicons
+                  name={reminderIcon(row)}
+                  size={20}
+                  color={statusColors.text}
+                />
               </View>
             );
           })}
         </View>
       )}
 
-      {/* ── 5. Кнопки-заглушки (для разработки, Этапы 2–3) ───────────── */}
-      <View style={s.devSection}>
-        <TouchableOpacity
-          style={s.devBtn}
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          onPress={() => router.push('/add-fuel' as any)}
-          activeOpacity={0.8}
-        >
-          <Text style={s.devBtnText}>⛽ {t('addFuel.title')} →</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={s.devBtn}
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          onPress={() => router.push('/add-expense' as any)}
-          activeOpacity={0.8}
-        >
-          <Text style={s.devBtnText}>💳 {t('addExpense.title')} →</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={s.devBtn}
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          onPress={() => router.push('/history' as any)}
-          activeOpacity={0.8}
-        >
-          <Text style={s.devBtnText}>📋 {t('history.title')} →</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={s.devBtn}
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          onPress={() => router.push('/db-check' as any)}
-          activeOpacity={0.8}
-        >
-          <Text style={s.devBtnText}>🗄 DB Check →</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Нижний отступ (таб-бар) */}
+      <View style={{ height: 16 }} />
     </ScrollView>
   );
 }
@@ -360,10 +341,17 @@ function makeStyles(th: AppTheme) {
   const { colors, radius, typography } = th;
   return StyleSheet.create({
     root:    { flex: 1, backgroundColor: colors.background },
-    content: { padding: 16, paddingTop: Platform.OS === 'ios' ? 56 : 48, paddingBottom: 40 },
-    center:  { flex: 1, justifyContent: 'center', alignItems: 'center',
-               backgroundColor: colors.background },
-
+    content: {
+      padding:    16,
+      paddingTop: Platform.OS === 'ios' ? 56 : 48,
+      paddingBottom: 24,
+    },
+    center:  {
+      flex:            1,
+      justifyContent:  'center',
+      alignItems:      'center',
+      backgroundColor: colors.background,
+    },
     loadingText: { color: colors.textSecondary, ...typography.cardText },
 
     // ── Шапка ──────────────────────────────────────────────────────────────
@@ -373,31 +361,22 @@ function makeStyles(th: AppTheme) {
       alignItems:     'flex-start',
       marginBottom:   20,
     },
-    monthLabel: {
-      color: colors.textPrimary,
-      ...typography.screenTitle,
-      marginBottom: 4,
-    },
-    odoLabel: {
-      color: colors.textSecondary,
-      ...typography.label,
-    },
-    gearBtn: {
-      marginTop: 2,
-    },
+    monthLabel: { color: colors.textPrimary, ...typography.screenTitle, marginBottom: 4 },
+    odoLabel:   { color: colors.textSecondary, ...typography.label },
+    gearBtn:    { marginTop: 2 },
 
-    // ── Градиентный блок суммы ─────────────────────────────────────────────
+    // ── Градиентный блок ───────────────────────────────────────────────────
     totalBlock: {
-      borderRadius:    radius.totalBlock,
-      paddingVertical: 28,
+      borderRadius:      radius.totalBlock,
+      paddingVertical:   28,
       paddingHorizontal: 24,
-      alignItems:      'center',
-      marginBottom:    16,
+      alignItems:        'center',
+      marginBottom:      16,
     },
     totalLabel: {
-      color:        'rgba(255,255,255,0.75)',
+      color:         'rgba(255,255,255,0.75)',
       ...typography.label,
-      marginBottom: 8,
+      marginBottom:  8,
       textTransform: 'uppercase',
       letterSpacing: 1,
     },
@@ -408,99 +387,77 @@ function makeStyles(th: AppTheme) {
     },
 
     // ── Карточки статистики ────────────────────────────────────────────────
-    statsRow: {
-      flexDirection: 'row',
-      marginBottom:  16,
-    },
+    statsRow: { flexDirection: 'row', marginBottom: 24 },
     statCard: {
       flex:            1,
       backgroundColor: colors.surface,
       borderRadius:    radius.card,
       padding:         16,
     },
-    statTitle: {
-      color:        colors.textSecondary,
-      ...typography.labelSmall,
-      marginBottom: 6,
-    },
+    statTitle: { color: colors.textSecondary, ...typography.labelSmall, marginBottom: 6 },
     statValue: {
       color:        colors.textPrimary,
       fontSize:     typography.cardValue.fontSize,
       fontWeight:   typography.cardValue.fontWeight,
       marginBottom: 4,
     },
-    statSub: {
-      color: colors.textMuted,
-      ...typography.labelSmall,
-    },
+    statSub: { color: colors.textMuted, ...typography.labelSmall },
 
     // ── Секция напоминаний ─────────────────────────────────────────────────
     sectionHeader: {
-      color:            colors.textWeak,
+      color:         colors.textWeak,
       ...typography.sectionHeader,
-      textTransform:    'uppercase',
-      marginBottom:     8,
+      textTransform: 'uppercase',
+      marginBottom:  12,
     },
-    card: {
-      backgroundColor: colors.surface,
-      borderRadius:    radius.card,
-      paddingVertical: 4,
-      marginBottom:    16,
-    },
-    noReminders: {
-      color:   colors.statusOk.text,
-      ...typography.cardText,
-      padding: 12,
-    },
-    reminderRow: {
-      flexDirection:  'row',
-      alignItems:     'center',
-      paddingVertical: 13,
+    reminderList: { gap: 8 },
+
+    // Карточка одного напоминания
+    reminderCard: {
+      flexDirection:     'row',
+      alignItems:        'center',
+      backgroundColor:   colors.surface,
+      borderRadius:      radius.card,
+      borderWidth:       1,
+      borderColor:       colors.border,
+      paddingVertical:   14,
       paddingHorizontal: 14,
+      gap:               12,
     },
-    reminderBorder: {
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+    reminderCardOk: {
+      // для плейсхолдера «Все в норме»
     },
-    dot: {
-      width:        28,
-      height:       28,
-      borderRadius: 14,
+
+    // Индикатор статуса (левый кружок)
+    statusDot: {
+      width:          28,
+      height:         28,
+      borderRadius:   14,
       justifyContent: 'center',
       alignItems:     'center',
-      marginRight:    12,
+      flexShrink:     0,
     },
-    dotInner: {
+    statusDotInner: {
       width:        10,
       height:       10,
       borderRadius: 5,
     },
+
+    // Центральный блок
+    reminderCenter: { flex: 1 },
     reminderTitle: {
-      flex:  1,
-      color: colors.textPrimary,
-      ...typography.cardText,
+      color:        colors.textPrimary,
+      ...typography.cardTextMedium,
+      marginBottom: 3,
     },
-    reminderStatus: {
-      ...typography.label,
-      textAlign: 'right',
-      flexShrink: 0,
+    reminderSub: {
+      ...typography.labelSmall,
     },
 
-    // ── Кнопки-заглушки (dev) ─────────────────────────────────────────────
-    devSection: {
-      gap: 8,
-    },
-    devBtn: {
-      backgroundColor: colors.surface,
-      borderRadius:    radius.card,
-      borderWidth:     1,
-      borderColor:     colors.border,
-      paddingVertical: 13,
-      alignItems:      'center',
-    },
-    devBtnText: {
-      color: colors.textSecondary,
-      ...typography.label,
+    // «Все в норме» текст
+    noReminders: {
+      flex:       1,
+      ...typography.cardText,
     },
   });
 }
