@@ -13,13 +13,13 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import {
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -154,7 +154,8 @@ export default function StatsScreen() {
 
   const th = useAppTheme();
   const { colors, radius, typography, gradient } = th;
-  const s = useMemo(() => makeStyles(th), [th]);
+  const insets = useSafeAreaInsets();
+  const s = useMemo(() => makeStyles(th, insets.top), [th, insets.top]);
 
   // ── Состояние ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabKey>('fuel');
@@ -230,6 +231,7 @@ export default function StatsScreen() {
 
   // ── Рендер ─────────────────────────────────────────────────────────────────
   return (
+    <View style={s.safeWrap}>
     <ScrollView
       style={s.root}
       contentContainerStyle={s.content}
@@ -405,18 +407,25 @@ export default function StatsScreen() {
         </>
       )}
     </ScrollView>
+    </View>
   );
 }
 
 // ─── Стили ───────────────────────────────────────────────────────────────────
 
-function makeStyles(th: AppTheme) {
+function makeStyles(th: AppTheme, topInset: number) {
   const { colors, radius, typography } = th;
   return StyleSheet.create({
+    // Внешний контейнер: фон под status bar + safe-area paddingTop.
+    safeWrap: {
+      flex:            1,
+      backgroundColor: colors.background,
+      paddingTop:      topInset,
+    },
     root:    { flex: 1, backgroundColor: colors.background },
     content: {
       padding:       16,
-      paddingTop:    Platform.OS === 'ios' ? 56 : 48,
+      paddingTop:    16,
       paddingBottom: 48,
     },
     center: {

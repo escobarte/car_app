@@ -13,13 +13,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Platform,
   SectionList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -60,10 +60,12 @@ function fmtMonthHeader(yearMonth: string, locale: string): string {
 
 // ─── Стили (определяем до HistoryRow) ──────────────────────────────────────
 
-function makeStyles(th: AppTheme) {
+function makeStyles(th: AppTheme, topInset = 0) {
   const { colors, radius, typography } = th;
   return StyleSheet.create({
-    root:    { flex: 1, backgroundColor: colors.background },
+    // root тянет фон под status bar и добавляет safe-area paddingTop —
+    // чтобы при скролле список не уезжал под полупрозрачный status bar.
+    root:    { flex: 1, backgroundColor: colors.background, paddingTop: topInset },
     center:  { flex: 1, justifyContent: 'center', alignItems: 'center',
                backgroundColor: colors.background },
     listContent: { paddingBottom: 40 },
@@ -74,7 +76,7 @@ function makeStyles(th: AppTheme) {
       alignItems:        'center',
       justifyContent:    'space-between',
       paddingHorizontal: 16,
-      paddingTop:        Platform.OS === 'ios' ? 56 : 48,
+      paddingTop:        16,
       paddingBottom:     12,
     },
     headerTitle: { color: colors.textPrimary, ...typography.screenTitle },
@@ -287,7 +289,8 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
 
   const th = useAppTheme();
   const { colors } = th;
-  const s = useMemo(() => makeStyles(th), [th]);
+  const insets = useSafeAreaInsets();
+  const s = useMemo(() => makeStyles(th, insets.top), [th, insets.top]);
 
   const [car,        setCar]        = useState<Car | null>(null);
   const [fuels,      setFuels]      = useState<FuelEntry[]>([]);

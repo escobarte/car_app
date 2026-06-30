@@ -1,0 +1,45 @@
+● Всё хорошо. Подведу итог:
+  
+  Что исправлено
+    
+  Issue 1 — контент уезжает под status bar при скролле
+
+  Причина: paddingTop стоял на contentContainerStyle (внутри скроллящейся области). В Expo SDK 54 на Android status bar по умолчанию полупрозрачный (edge-to-edge), поэтому при скролле заголовок «Июнь 2026 г.» уезжал
+   под него.
+
+  Фикс: перенёс safe-area отступ из contentContainerStyle в внешний контейнер (или в style корневого View/ScrollView). Теперь скроллится только область ниже status bar.
+
+  Применено в:
+  - app/(tabs)/index.tsx — дашборд
+  - app/(tabs)/explore.tsx — статистика
+  - app/(tabs)/service.tsx — обслуживание
+  - components/HistoryList.tsx — история
+
+  Issue 2 — Action Sheet открывается при свайпе
+    
+  Причина: TouchableOpacity кнопки + имел style={st.addOuter} с flex: 1, превращая всю центральную колонку таб-бара (≈ 1/5 ширины × полная высота) в зону нажатия. При свайпе пальцем рядом с этой зоной случайно
+  срабатывал onPress.
+    
+  Фикс в app/(tabs)/_layout.tsx:
+  - addOuter теперь обычный View с pointerEvents="box-none" (пропускает события насквозь)
+  - TouchableOpacity сжат до addTouch = 58×58 (размер самой кнопки)
+  - Tab-bar высота и нижний отступ ActionSheet используют useSafeAreaInsets() вместо Platform.OS-хардкода — корректно работает с edge-to-edge на Android
+  - nav.service: 'Сервис' (вместо длинного «Обслуживание», которое обрезалось)
+
+  TypeScript-проверка прошла без ошибок.
+  
+✻ Cogitated for 10m 41s
+
+※ recap: Fixing two Android UI bugs in the Expo car app: content scrolling under the translucent status bar, and the central + button opening the Action Sheet on swipes. Next: run the app on device to confirm both 
+  fixes work. (disable recaps in /config)
+    
+  /btw Как долго тебе ещё выполнять пое задание ? он сжирает мои токены
+    
+    Осталось немного — основные правки уже сделаны:
+    
+    Готово:
+    - app/(tabs)/index.tsx — safe-area top через внешний View (Issue 1 — заголовок не уходит под status bar при скролле)
+    - app/(tabs)/_layout.tsx — touch-зона + ограничена 58×58 + pointerEvents="box-none" (Issue 2 — Action Sheet больше не открывается случайно при свайпе); таб-бар и ActionSheet используют insets.bottom
+    - app/(tabs)/explore.tsx, app/(tabs)/service.tsx, components/HistoryList.tsx — тот же safe-area фикс для консистентности
+    - i18n/locales/ru.ts — Обслуживание → Сервис (не обрезается в таб-баре)
+    - tsc --noEmit прошёл без ошибок

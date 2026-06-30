@@ -10,7 +10,6 @@
 import { useState } from 'react';
 import {
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -21,6 +20,7 @@ import { Tabs, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
@@ -33,23 +33,28 @@ type AddBtnProps = {
 };
 
 function AddTabButton({ onPress, gradient }: AddBtnProps) {
+  // Контейнер просто центрирует кнопку в табе и НЕ ловит нажатия (pointerEvents="box-none"),
+  // чтобы свайпы/тапы вне самого «+» проходили сквозь — иначе из-за `flex: 1`
+  // вся центральная колонка таб-бара была touchable, и Action Sheet открывался
+  // при любом случайном касании этой зоны.
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      style={st.addOuter}
-      accessibilityRole="button"
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-    >
-      <LinearGradient
-        colors={gradient.accent.colors}
-        start={gradient.accent.start}
-        end={gradient.accent.end}
-        style={st.addGradient}
+    <View style={st.addOuter} pointerEvents="box-none">
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.85}
+        style={st.addTouch}
+        accessibilityRole="button"
       >
-        <Ionicons name="add" size={30} color="#ffffff" />
-      </LinearGradient>
-    </TouchableOpacity>
+        <LinearGradient
+          colors={gradient.accent.colors}
+          start={gradient.accent.start}
+          end={gradient.accent.end}
+          style={st.addGradient}
+        >
+          <Ionicons name="add" size={30} color="#ffffff" />
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -74,6 +79,8 @@ function ActionSheet({
   items:   SheetItem[];
   colors:  AppTheme['colors'];
 }) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal
       visible={visible}
@@ -81,6 +88,7 @@ function ActionSheet({
       animationType="fade"
       onRequestClose={onClose}
       statusBarTranslucent
+      navigationBarTranslucent
     >
       {/* Backdrop */}
       <Pressable
@@ -113,8 +121,8 @@ function ActionSheet({
           </TouchableOpacity>
         ))}
 
-        {/* Отступ снизу для iOS home indicator */}
-        <View style={{ height: Platform.OS === 'ios' ? 24 : 8 }} />
+        {/* Отступ снизу: home indicator iOS / навигационная панель Android */}
+        <View style={{ height: Math.max(insets.bottom, 12) }} />
       </View>
     </Modal>
   );
@@ -126,6 +134,7 @@ export default function TabLayout() {
   const { t } = useTranslation();
   const th = useAppTheme();
   const { colors, gradient } = th;
+  const insets = useSafeAreaInsets();
 
   const [sheetVisible, setSheetVisible] = useState(false);
 
@@ -167,8 +176,11 @@ export default function TabLayout() {
             backgroundColor: colors.surfaceSecondary,
             borderTopColor:  colors.border,
             borderTopWidth:  1,
-            height:          Platform.OS === 'ios' ? 72 : 60,
-            paddingBottom:   Platform.OS === 'ios' ? 16 : 8,
+            // На Android edge-to-edge системная панель навигации (жесты/3 кнопки)
+            // отъедает место снизу — компенсируем через insets.bottom,
+            // иначе таб-бар «прижимается» к низу и кнопки попадают на жесты.
+            height:          60 + insets.bottom,
+            paddingBottom:   8  + insets.bottom,
             overflow:        'visible',   // кнопка «+» выходит за рамки таб-бара
           },
           tabBarLabelStyle: {
@@ -249,12 +261,21 @@ export default function TabLayout() {
 // ─── Стили ──────────────────────────────────────────────────────────────────
 
 const st = StyleSheet.create({
-  // Кнопка «+»
+  // Контейнер «+» — раскрывается на всю ячейку таб-бара только для центровки;
+  // не ловит pointer-события (см. pointerEvents="box-none" в JSX).
   addOuter: {
     flex:           1,
     alignItems:     'center',
     justifyContent: 'center',
     overflow:       'visible',
+  },
+  // Touch-зона ограничена самой кнопкой 58×58.
+  addTouch: {
+    width:        58,
+    height:       58,
+    borderRadius: 16,
+    // Немного приподнята над таб-баром
+    transform:    [{ translateY: -14 }],
   },
   addGradient: {
     width:          58,
@@ -262,8 +283,6 @@ const st = StyleSheet.create({
     borderRadius:   16,
     justifyContent: 'center',
     alignItems:     'center',
-    // Немного приподнята над таб-баром
-    transform:      [{ translateY: -14 }],
     // Тень (iOS / Android)
     shadowColor:    '#1a8fd6',
     shadowOffset:   { width: 0, height: 4 },

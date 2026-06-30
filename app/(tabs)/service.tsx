@@ -29,6 +29,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -72,7 +73,8 @@ export default function ServiceScreen() {
 
   const th = useAppTheme();
   const { colors, radius, typography, gradient } = th;
-  const s = useMemo(() => makeStyles(th), [th]);
+  const insets = useSafeAreaInsets();
+  const s = useMemo(() => makeStyles(th, insets.top), [th, insets.top]);
 
   // ── Вспомогательные цвета ───────────────────────────────────────────────────
 
@@ -521,14 +523,16 @@ export default function ServiceScreen() {
 
 // ─── Стили ───────────────────────────────────────────────────────────────────
 
-function makeStyles(th: AppTheme) {
+function makeStyles(th: AppTheme, topInset: number) {
   const { colors, radius, typography } = th;
   return StyleSheet.create({
-    root:  { flex: 1, backgroundColor: colors.background },
+    // root: фон под status bar + safe-area paddingTop у внешнего контейнера,
+    // чтобы при скролле контент не уезжал под полупрозрачный status bar.
+    root:  { flex: 1, backgroundColor: colors.background, paddingTop: topInset },
     scroll: { flex: 1 },
     content: {
       padding:       16,
-      paddingTop:    Platform.OS === 'ios' ? 56 : 48,
+      paddingTop:    16,
       paddingBottom: 40,
     },
     center: {

@@ -38,7 +38,7 @@ const ru = {
     home:    'Главная',
     history: 'История',
     add:     '+',
-    service: 'Обслуживание',
+    service: 'Сервис',
     stats:   'Статистика',
   },
 

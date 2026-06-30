@@ -1,0 +1,5 @@
+Recap по приложению.
+1. Для того чтобы запустить expo server:
+	a) powershell [path:  A:\car_app>]
+	b) npx expo start -c  //  npx expo start -c --offline
+

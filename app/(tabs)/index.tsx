@@ -15,13 +15,13 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import {
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -101,7 +101,8 @@ export default function DashboardScreen() {
 
   const th = useAppTheme();
   const { colors, radius, typography, gradient } = th;
-  const s = useMemo(() => makeStyles(th), [th]);
+  const insets = useSafeAreaInsets();
+  const s = useMemo(() => makeStyles(th, insets.top), [th, insets.top]);
 
   // ── Состояние ─────────────────────────────────────────────────────────────
   const [car,          setCar]          = useState<Car | null>(null);
@@ -199,11 +200,12 @@ export default function DashboardScreen() {
   // ── Рендер ───────────────────────────────────────────────────────────────
 
   return (
-    <ScrollView
-      style={s.root}
-      contentContainerStyle={s.content}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={s.safeWrap}>
+      <ScrollView
+        style={s.root}
+        contentContainerStyle={s.content}
+        showsVerticalScrollIndicator={false}
+      >
       {/* ── 1. Шапка ─────────────────────────────────────────────────── */}
       <View style={s.topRow}>
         <View>
@@ -329,21 +331,30 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Нижний отступ (таб-бар) */}
-      <View style={{ height: 16 }} />
-    </ScrollView>
+        {/* Нижний отступ (таб-бар) */}
+        <View style={{ height: 16 }} />
+      </ScrollView>
+    </View>
   );
 }
 
 // ─── Стили ──────────────────────────────────────────────────────────────────
 
-function makeStyles(th: AppTheme) {
+function makeStyles(th: AppTheme, topInset: number) {
   const { colors, radius, typography } = th;
   return StyleSheet.create({
+    // Внешний контейнер: занимает весь экран, фон тянется под status bar.
+    // paddingTop через safe-area inset гарантирует, что ScrollView начинается
+    // НИЖЕ status bar — и контент при скролле не уезжает под него.
+    safeWrap: {
+      flex:            1,
+      backgroundColor: colors.background,
+      paddingTop:      topInset,
+    },
     root:    { flex: 1, backgroundColor: colors.background },
     content: {
-      padding:    16,
-      paddingTop: Platform.OS === 'ios' ? 56 : 48,
+      padding:       16,
+      paddingTop:    16,
       paddingBottom: 24,
     },
     center:  {
