@@ -20,12 +20,9 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import {
-  Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -34,11 +31,10 @@ import { useTranslation } from 'react-i18next';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
-import { currencySymbol, formatMoney } from '@/constants/currencies';
+import { formatMoney } from '@/constants/currencies';
 import {
   carRepo, serviceRepo, reminderRepo,
   Car, ServiceRecord, Reminder,
@@ -47,29 +43,12 @@ import {
   calcReminderRow, STATUS_ORDER,
   type StatusKind, type ReminderRow,
 } from '@/utils/reminders';
-
-// ─── Утилиты ────────────────────────────────────────────────────────────────
-
-function toISO(d: Date): string {
-  const y  = d.getFullYear();
-  const m  = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${dd}`;
-}
-
-function toDisplay(d: Date, locale: string): string {
-  return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-function parseNum(s: string): number {
-  return parseFloat(s.replace(',', '.'));
-}
+import MarkDoneSheet from '@/components/MarkDoneSheet';
 
 // ─── Компонент ───────────────────────────────────────────────────────────────
 
 export default function ServiceScreen() {
-  const { t, i18n } = useTranslation();
-  const locale = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
+  const { t } = useTranslation();
 
   const th = useAppTheme();
   const { colors, radius, typography, gradient } = th;
@@ -100,48 +79,40 @@ export default function ServiceScreen() {
   const [history, setHistory] = useState<ServiceRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ── Модальное окно «Сделано» ───────────────────────────────────────────────
-  const [doneTarget,   setDoneTarget]   = useState<Reminder | null>(null);
-  const [doneDate,     setDoneDate]     = useState(new Date());
-  const [doneDatePick, setDoneDatePick] = useState(false);
-  const [doneOdo,      setDoneOdo]      = useState('');
-  const [doneCost,     setDoneCost]     = useState('');
-  const [doneNote,     setDoneNote]     = useState('');
-  const [doneSaving,   setDoneSaving]   = useState(false);
-  const [doneFocused,  setDoneFocused]  = useState<string | null>(null);
+  // Bottom-sheet «Отметить выполнение» — отдельный переиспользуемый компонент.
+  const [doneTarget, setDoneTarget] = useState<Reminder | null>(null);
 
   // ── Загрузка данных ───────────────────────────────────────────────────────
+
+  const loadData = useCallback(async () => {
+    const [carData, reminders, records] = await Promise.all([
+      carRepo.getCar(),
+      reminderRepo.getAllReminders(),
+      serviceRepo.getAllServiceRecords(),
+    ]);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const odo = carData?.current_odometer ?? 0;
+
+    const computed = reminders
+      .map((r) => calcReminderRow(r, odo, today))
+      .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
+
+    setCar(carData);
+    setRows(computed);
+    setHistory(records.slice(0, 10)); // последние 10
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-
-      async function load() {
-        setLoading(true);
-        const [carData, reminders, records] = await Promise.all([
-          carRepo.getCar(),
-          reminderRepo.getAllReminders(),
-          serviceRepo.getAllServiceRecords(),
-        ]);
-        if (!active) return;
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const odo = carData?.current_odometer ?? 0;
-
-        const computed = reminders
-          .map((r) => calcReminderRow(r, odo, today))
-          .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
-
-        setCar(carData);
-        setRows(computed);
-        setHistory(records.slice(0, 10)); // последние 10
-        setLoading(false);
-      }
-
-      load().catch(console.error);
+      setLoading(true);
+      loadData()
+        .catch(console.error)
+        .finally(() => { if (active) setLoading(false); });
       return () => { active = false; };
-    }, [])
+    }, [loadData])
   );
 
   // ── Текст остатка ─────────────────────────────────────────────────────────
@@ -167,80 +138,6 @@ export default function ServiceScreen() {
     }
     return `${t('service.intervalDays', { n: r.interval_days ?? '' })} · ${t('service.warnBeforeDays', { n: r.warn_before })}`;
   }
-
-  // ── Открыть модалку «Сделано» ─────────────────────────────────────────────
-
-  function openDoneModal(reminder: Reminder) {
-    setDoneTarget(reminder);
-    setDoneDate(new Date());
-    setDoneOdo(String(car?.current_odometer ?? ''));
-    setDoneCost('');
-    setDoneNote('');
-    setDoneFocused(null);
-  }
-
-  function closeDoneModal() {
-    setDoneTarget(null);
-  }
-
-  // ── Сохранить «Сделано» ───────────────────────────────────────────────────
-
-  async function handleDoneSave() {
-    if (!doneTarget || doneSaving) return;
-    setDoneSaving(true);
-    try {
-      const dateStr = toISO(doneDate);
-      const odoNum  = doneOdo.trim() ? parseInt(doneOdo.trim(), 10) : (car?.current_odometer ?? 0);
-      const costNum = doneCost.trim() ? parseNum(doneCost) : 0;
-
-      // 1. Создаём запись SERVICE_RECORD
-      await serviceRepo.addServiceRecord({
-        car_id:      1,
-        reminder_id: doneTarget.id,
-        date:        dateStr,
-        odometer:    isNaN(odoNum) ? 0 : odoNum,
-        cost:        isNaN(costNum) ? 0 : costNum,
-        note:        doneNote.trim(),
-      });
-
-      // 2. Сбрасываем счётчик регламента (ТЗ 6.3)
-      await reminderRepo.resetReminder(
-        doneTarget.id,
-        isNaN(odoNum) ? 0 : odoNum,
-        dateStr
-      );
-
-      // 3. Обновляем список
-      setDoneTarget(null);
-
-      const [carData, reminders, records] = await Promise.all([
-        carRepo.getCar(),
-        reminderRepo.getAllReminders(),
-        serviceRepo.getAllServiceRecords(),
-      ]);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const odo = carData?.current_odometer ?? 0;
-      const computed = reminders
-        .map((r) => calcReminderRow(r, odo, today))
-        .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
-      setCar(carData);
-      setRows(computed);
-      setHistory(records.slice(0, 10));
-    } catch (e) {
-      console.error('[Service.handleDoneSave]', e);
-    } finally {
-      setDoneSaving(false);
-    }
-  }
-
-  // ── Стиль поля ввода в модалке ────────────────────────────────────────────
-
-  function modalInputStyle(field: string) {
-    return [s.modalInput, doneFocused === field && s.modalInputFocused];
-  }
-
-  const sym = currencySymbol(car?.currency ?? '');
 
   // ── Загрузка ──────────────────────────────────────────────────────────────
 
@@ -321,7 +218,7 @@ export default function ServiceScreen() {
 
                   {/* Кнопка «Сделано» */}
                   <TouchableOpacity
-                    onPress={() => openDoneModal(reminder)}
+                    onPress={() => setDoneTarget(reminder)}
                     activeOpacity={0.85}
                   >
                     <LinearGradient
@@ -391,132 +288,13 @@ export default function ServiceScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* ── Модальное окно «Сделано» ───────────────────────────────────────── */}
-      <Modal
-        visible={doneTarget !== null}
-        animationType="slide"
-        transparent
-        onRequestClose={closeDoneModal}
-      >
-        <View style={s.modalOverlay}>
-          <View style={s.modalSheet}>
-            {/* Заголовок */}
-            <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>
-                {t('service.markDoneTitle')}
-              </Text>
-              <Text style={s.modalSubtitle} numberOfLines={1}>
-                {doneTarget?.title ?? ''}
-              </Text>
-              <TouchableOpacity
-                onPress={closeDoneModal}
-                style={s.modalCloseBtn}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Ionicons name="close" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {/* Дата */}
-              <Text style={s.modalFieldLabel}>{t('service.dateField')}</Text>
-              <TouchableOpacity
-                style={modalInputStyle('date')}
-                onPress={() => setDoneDatePick(true)}
-                activeOpacity={0.8}
-              >
-                <View style={s.dateRow}>
-                  <Text style={s.modalInputText}>{toDisplay(doneDate, locale)}</Text>
-                  <Text style={{ fontSize: 18 }}>📅</Text>
-                </View>
-              </TouchableOpacity>
-              {doneDatePick && (
-                <DateTimePicker
-                  value={doneDate}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_: DateTimePickerEvent, d?: Date) => {
-                    if (Platform.OS === 'android') setDoneDatePick(false);
-                    if (d) setDoneDate(d);
-                  }}
-                  maximumDate={new Date()}
-                />
-              )}
-              {Platform.OS === 'ios' && doneDatePick && (
-                <TouchableOpacity
-                  style={s.iosDoneBtn}
-                  onPress={() => setDoneDatePick(false)}
-                >
-                  <Text style={s.iosDoneBtnText}>{t('common.done')}</Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Пробег */}
-              <Text style={s.modalFieldLabel}>{t('service.odoField')}</Text>
-              <TextInput
-                style={modalInputStyle('odo')}
-                value={doneOdo}
-                onChangeText={setDoneOdo}
-                onFocus={() => setDoneFocused('odo')}
-                onBlur={() => setDoneFocused(null)}
-                keyboardType="number-pad"
-                placeholder={String(car?.current_odometer ?? 0)}
-                placeholderTextColor={colors.textWeak}
-              />
-
-              {/* Стоимость */}
-              <Text style={s.modalFieldLabel}>{t('service.costField')}{sym ? `, ${sym}` : ''}</Text>
-              <TextInput
-                style={modalInputStyle('cost')}
-                value={doneCost}
-                onChangeText={setDoneCost}
-                onFocus={() => setDoneFocused('cost')}
-                onBlur={() => setDoneFocused(null)}
-                keyboardType="decimal-pad"
-                placeholder="0.00"
-                placeholderTextColor={colors.textWeak}
-              />
-
-              {/* Заметка */}
-              <Text style={s.modalFieldLabel}>{t('service.noteField')}</Text>
-              <TextInput
-                style={[modalInputStyle('note'), s.modalInputMultiline]}
-                value={doneNote}
-                onChangeText={setDoneNote}
-                onFocus={() => setDoneFocused('note')}
-                onBlur={() => setDoneFocused(null)}
-                placeholder="…"
-                placeholderTextColor={colors.textWeak}
-                multiline
-                numberOfLines={2}
-                textAlignVertical="top"
-              />
-
-              {/* Кнопка подтверждения */}
-              <TouchableOpacity
-                style={s.confirmWrapper}
-                onPress={handleDoneSave}
-                disabled={doneSaving}
-                activeOpacity={0.85}
-              >
-                <LinearGradient
-                  colors={gradient.accent.colors}
-                  start={gradient.accent.start}
-                  end={gradient.accent.end}
-                  style={s.confirmBtn}
-                >
-                  <Text style={s.confirmBtnText}>
-                    {doneSaving ? '…' : t('service.confirmDone')}
-                  </Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      {/* Bottom-Sheet «Отметить выполнение» — единый компонент с Dashboard */}
+      <MarkDoneSheet
+        reminder={doneTarget}
+        car={car}
+        onClose={() => setDoneTarget(null)}
+        onSaved={() => { loadData().catch(console.error); }}
+      />
     </View>
   );
 }
@@ -703,78 +481,5 @@ function makeStyles(th: AppTheme, topInset: number) {
       color:      colors.accent,
       ...typography.cardText,
     },
-
-    // ── Модальное окно «Сделано» ──────────────────────────────────────────────
-    modalOverlay: {
-      flex:            1,
-      backgroundColor: 'rgba(0,0,0,0.7)',
-      justifyContent:  'flex-end',
-    },
-    modalSheet: {
-      backgroundColor: colors.surface,
-      borderTopLeftRadius:  20,
-      borderTopRightRadius: 20,
-      padding:         20,
-      paddingBottom:   Platform.OS === 'ios' ? 36 : 20,
-      maxHeight:       '85%',
-    },
-    modalHeader: {
-      marginBottom: 20,
-      paddingRight: 36, // для кнопки закрытия
-    },
-    modalTitle: {
-      color:        colors.textPrimary,
-      ...typography.screenTitle,
-      marginBottom: 2,
-    },
-    modalSubtitle: {
-      color: colors.textSecondary,
-      ...typography.label,
-    },
-    modalCloseBtn: {
-      position: 'absolute',
-      right:    0,
-      top:      0,
-    },
-    modalFieldLabel: {
-      color:         colors.textSecondary,
-      ...typography.labelSmall,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
-      marginTop:     12,
-      marginBottom:  6,
-    },
-    modalInput: {
-      backgroundColor:   colors.background,
-      borderRadius:      radius.card,
-      borderWidth:       1,
-      borderColor:       colors.border,
-      paddingHorizontal: 16,
-      paddingVertical:   13,
-      color:             colors.textPrimary,
-      ...typography.cardText,
-    },
-    modalInputFocused: { borderColor: colors.borderAccent },
-    modalInputMultiline: { minHeight: 68, paddingTop: 12 },
-    modalInputText:  { color: colors.textPrimary, ...typography.cardText },
-
-    dateRow: {
-      flexDirection:  'row',
-      alignItems:     'center',
-      justifyContent: 'space-between',
-    },
-
-    iosDoneBtn: {
-      alignSelf: 'flex-end', paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4,
-    },
-    iosDoneBtnText: { color: colors.accent, ...typography.cardTextMedium },
-
-    confirmWrapper: { marginTop: 20 },
-    confirmBtn: {
-      borderRadius:    radius.card,
-      paddingVertical: 16,
-      alignItems:      'center',
-    },
-    confirmBtnText: { color: '#ffffff', ...typography.cardTextMedium },
   });
 }

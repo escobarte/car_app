@@ -1,0 +1,79 @@
+Этап: Тап по напоминанию → отметить выполнение
+
+Что сделано
+─────────────────────────────────────────────────────────
+
+Фича:
+  На дашборде карточки напоминаний были «мёртвым» текстом.
+  Теперь тап по любой карточке открывает Bottom-Sheet,
+  где пользователь вводит данные о выполнении.
+  После сохранения карточка пропадает из «просрочки»
+  (сбрасывается счётчик регламента), и в Историю попадает
+  запись об обслуживании.
+
+Решение по вариантам (выбраны пользователем):
+  1. Поведение формы — «открыть существующий экран» в виде
+     реюзабельного Bottom-Sheet (объединил оба варианта).
+  2. Зона тапа — все напоминания.
+  3. Способ открытия — Bottom Sheet (как «+»).
+
+Сделанные изменения
+─────────────────────────────────────────────────────────
+
+components/MarkDoneSheet.tsx (НОВЫЙ файл)
+  Извлёк форму «Отметить выполнение» в единый компонент.
+  Раньше она жила инлайном в service.tsx, и для дашборда
+  пришлось бы дублировать ~150 строк.
+  Пропсы:
+    reminder: Reminder | null   ← null = скрыт
+    car:      Car | null         ← для пре-филла пробега
+    onClose:  () => void
+    onSaved:  () => void         ← триггер релоада
+  Содержимое:
+    - Дата (DateTimePicker, default today)
+    - Пробег (TextInput, default = car.current_odometer)
+    - Стоимость (TextInput, optional)
+    - Заметка (TextInput, optional)
+    - Кнопка «Подтвердить» (градиент)
+  Логика save:
+    1) serviceRepo.addServiceRecord → запись в Историю.
+    2) reminderRepo.resetReminder → last_odometer/last_date
+       обновляются на введённые значения. Карточка
+       перестаёт быть «просроченной».
+    3) onSaved() + onClose().
+  Safe-area: paddingBottom = max(insets.bottom, 16) для
+  Android edge-to-edge / iOS home indicator.
+
+app/(tabs)/index.tsx (Dashboard)
+  - Импорт MarkDoneSheet.
+  - Состояние doneTarget: Reminder | null.
+  - Извлёк loadData() в useCallback — переиспользуется и
+    при focus, и после save.
+  - Карточки напоминаний обёрнуты в TouchableOpacity
+    (вместо View), onPress → setDoneTarget(row.reminder).
+  - В конец JSX добавлен <MarkDoneSheet ... />.
+  - Пустое состояние «Все в норме» остаётся View
+    (нечего отмечать).
+
+app/(tabs)/service.tsx (Service tab)
+  - Заменил инлайновый <Modal>...</Modal> на <MarkDoneSheet />.
+  - Удалил весь state и хендлеры формы:
+    doneDate/doneOdo/doneCost/doneNote/doneSaving/doneFocused/doneDatePick,
+    openDoneModal, closeDoneModal, handleDoneSave, modalInputStyle,
+    утилиты toISO/toDisplay/parseNum.
+  - Удалил неиспользуемые импорты: Modal, Platform, TextInput,
+    DateTimePicker, currencySymbol, i18n/locale.
+  - Удалил мёртвые стили (~70 строк modal*, dateRow, iosDoneBtn,
+    confirmWrapper, confirmBtn, confirmBtnText).
+  - Извлёк loadData() в useCallback — используется в
+    useFocusEffect и после save.
+
+База данных (без изменений)
+  Используются уже существующие методы:
+    - reminderRepo.resetReminder(id, odo, date)
+    - serviceRepo.addServiceRecord({...})
+
+Проверки
+  - tsc --noEmit прошёл без ошибок.
+  - Формальный единый источник правды для формы:
+    одна и та же UX/логика на дашборде и в Сервисе.

@@ -34,6 +34,7 @@ import {
   carRepo, fuelRepo, expenseRepo, serviceRepo, reminderRepo,
   Car, FuelEntry, Expense, ServiceRecord, Reminder,
 } from '@/db';
+import MarkDoneSheet from '@/components/MarkDoneSheet';
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
@@ -112,61 +113,61 @@ export default function DashboardScreen() {
   const [remRows,      setRemRows]      = useState<ReminderRow[]>([]);
   const [loading,      setLoading]      = useState(true);
 
+  // Bottom-sheet «Отметить выполнение»
+  const [doneTarget,   setDoneTarget]   = useState<Reminder | null>(null);
+
   // ── Загрузка ─────────────────────────────────────────────────────────────
+
+  const loadData = useCallback(async () => {
+    const ym = currentYearMonth();
+    const [carData, fuelMonth, expMonth, allSvc, allFuel, reminders] =
+      await Promise.all([
+        carRepo.getCar(),
+        fuelRepo.getFuelEntriesByMonth(ym),
+        expenseRepo.getExpensesByMonth(ym),
+        serviceRepo.getAllServiceRecords(),
+        fuelRepo.getAllFuelEntries(),
+        reminderRepo.getAllReminders(),
+      ]);
+
+    const svcMonth = allSvc.filter((sv) => sv.date.startsWith(ym));
+    const total =
+      sum(fuelMonth.map((f) => f.total_cost)) +
+      sum(expMonth.map((e) => e.amount)) +
+      sum(svcMonth.map((sv) => sv.cost));
+
+    const prices = fuelMonth
+      .filter((f) => f.price_per_liter > 0)
+      .map((f) => f.price_per_liter);
+
+    const consumptions = allFuel
+      .filter((f): f is FuelEntry & { consumption: number } => f.consumption != null)
+      .map((f) => f.consumption);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const currentOdo = carData?.current_odometer ?? 0;
+
+    const rows: ReminderRow[] = reminders
+      .map((r) => calcStatus(r, currentOdo, today))
+      .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
+
+    setCar(carData);
+    setMonthlyTotal(total);
+    setAvgPrice(avg(prices));
+    setAvgCons(avg(consumptions));
+    setRemRows(rows);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
-
-      async function load() {
-        setLoading(true);
-
-        const ym = currentYearMonth();
-        const [carData, fuelMonth, expMonth, allSvc, allFuel, reminders] =
-          await Promise.all([
-            carRepo.getCar(),
-            fuelRepo.getFuelEntriesByMonth(ym),
-            expenseRepo.getExpensesByMonth(ym),
-            serviceRepo.getAllServiceRecords(),
-            fuelRepo.getAllFuelEntries(),
-            reminderRepo.getAllReminders(),
-          ]);
-
-        if (!active) return;
-
-        const svcMonth = allSvc.filter((sv) => sv.date.startsWith(ym));
-        const total =
-          sum(fuelMonth.map((f) => f.total_cost)) +
-          sum(expMonth.map((e) => e.amount)) +
-          sum(svcMonth.map((sv) => sv.cost));
-
-        const prices = fuelMonth
-          .filter((f) => f.price_per_liter > 0)
-          .map((f) => f.price_per_liter);
-
-        const consumptions = allFuel
-          .filter((f): f is FuelEntry & { consumption: number } => f.consumption != null)
-          .map((f) => f.consumption);
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const currentOdo = carData?.current_odometer ?? 0;
-
-        const rows: ReminderRow[] = reminders
-          .map((r) => calcStatus(r, currentOdo, today))
-          .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
-
-        setCar(carData);
-        setMonthlyTotal(total);
-        setAvgPrice(avg(prices));
-        setAvgCons(avg(consumptions));
-        setRemRows(rows);
-        setLoading(false);
-      }
-
-      load().catch(console.error);
+      setLoading(true);
+      loadData()
+        .catch(console.error)
+        .finally(() => { if (active) setLoading(false); });
       return () => { active = false; };
-    }, [])
+    }, [loadData])
   );
 
   // ── Производные ──────────────────────────────────────────────────────────
@@ -282,8 +283,12 @@ export default function DashboardScreen() {
               : colors.border;
 
             return (
-              <View
+              <TouchableOpacity
                 key={row.reminder.id}
+                onPress={() => setDoneTarget(row.reminder)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${row.reminder.title} — ${reminderLabel(row)}`}
                 style={[
                   s.reminderCard,
                   {
@@ -325,7 +330,7 @@ export default function DashboardScreen() {
                   size={20}
                   color={statusColors.text}
                 />
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -334,6 +339,14 @@ export default function DashboardScreen() {
         {/* Нижний отступ (таб-бар) */}
         <View style={{ height: 16 }} />
       </ScrollView>
+
+      {/* Bottom-Sheet «Отметить выполнение» — открывается тапом по карточке */}
+      <MarkDoneSheet
+        reminder={doneTarget}
+        car={car}
+        onClose={() => setDoneTarget(null)}
+        onSaved={() => { loadData().catch(console.error); }}
+      />
     </View>
   );
 }
