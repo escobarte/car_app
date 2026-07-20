@@ -14,6 +14,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -145,7 +146,13 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
       statusBarTranslucent
       navigationBarTranslucent
     >
-      <View style={s.overlay}>
+      {/* KeyboardAvoidingView поднимает лист над клавиатурой:
+          iOS 'padding' добавляет отступ снизу, Android 'height' сжимает контейнер —
+          в обоих случаях flex-end лист уезжает вверх, поля остаются видимыми. */}
+      <KeyboardAvoidingView
+        style={s.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={s.sheet}>
           {/* Шапка */}
           <View style={s.header}>
@@ -165,6 +172,7 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
           <ScrollView
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode="interactive"
           >
             {/* Дата */}
             <Text style={s.fieldLabel}>{t('service.dateField')}</Text>
@@ -262,7 +270,7 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
             </TouchableOpacity>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

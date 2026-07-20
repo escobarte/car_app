@@ -14,7 +14,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -212,74 +214,88 @@ export default function CategoriesScreen() {
         animationType="slide"
         onRequestClose={closeForm}
       >
-        <TouchableOpacity
-          style={s.modalOverlay}
-          activeOpacity={1}
-          onPress={closeForm}
-        />
-        <View style={s.modalSheet}>
-          <Text style={s.modalTitle}>
-            {form.editId == null
-              ? t('categoriesScreen.addTitle')
-              : t('categoriesScreen.editTitle')}
-          </Text>
-
-          {/* Поле названия */}
-          <Text style={s.fieldLabel}>{t('categoriesScreen.namePlaceholder')}</Text>
-          <TextInput
-            style={[s.input, !!nameError && s.inputError]}
-            value={form.name}
-            onChangeText={(v) => { setForm(f => ({ ...f, name: v })); setNameError(''); }}
-            placeholder={t('categoriesScreen.namePlaceholder')}
-            placeholderTextColor={colors.textWeak}
-            autoFocus
+        {/* KeyboardAvoidingView поднимает лист над клавиатурой:
+            iOS 'padding', Android 'height'. Содержимое — в ScrollView,
+            чтобы поле и кнопки оставались доступны при открытой клавиатуре. */}
+        <KeyboardAvoidingView
+          style={s.modalRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity
+            style={s.modalOverlay}
+            activeOpacity={1}
+            onPress={closeForm}
           />
-          {!!nameError && <Text style={s.errorText}>{nameError}</Text>}
-
-          {/* Выбор иконки */}
-          <Text style={[s.fieldLabel, { marginTop: 14 }]}>{t('categoriesScreen.iconLabel')}</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={s.iconScroll}
-            contentContainerStyle={s.iconScrollContent}
-          >
-            {USER_ICON_OPTIONS.map((iconName) => {
-              const active = form.icon === iconName;
-              return (
-                <TouchableOpacity
-                  key={iconName}
-                  style={[s.iconOption, active && s.iconOptionActive]}
-                  onPress={() => setForm(f => ({ ...f, icon: iconName }))}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={iconName as React.ComponentProps<typeof Ionicons>['name']}
-                    size={22}
-                    color={active ? colors.accent : colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          {/* Кнопки */}
-          <View style={s.modalBtns}>
-            <TouchableOpacity style={s.cancelBtn} onPress={closeForm} activeOpacity={0.7}>
-              <Text style={s.cancelBtnText}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={s.saveBtn}
-              onPress={handleSave}
-              activeOpacity={0.8}
-              disabled={saving}
+          <View style={s.modalSheet}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <Text style={s.saveBtnText}>
-                {saving ? '…' : t('categoriesScreen.saveBtn')}
+              <Text style={s.modalTitle}>
+                {form.editId == null
+                  ? t('categoriesScreen.addTitle')
+                  : t('categoriesScreen.editTitle')}
               </Text>
-            </TouchableOpacity>
+
+              {/* Поле названия */}
+              <Text style={s.fieldLabel}>{t('categoriesScreen.namePlaceholder')}</Text>
+              <TextInput
+                style={[s.input, !!nameError && s.inputError]}
+                value={form.name}
+                onChangeText={(v) => { setForm(f => ({ ...f, name: v })); setNameError(''); }}
+                placeholder={t('categoriesScreen.namePlaceholder')}
+                placeholderTextColor={colors.textWeak}
+                autoFocus
+              />
+              {!!nameError && <Text style={s.errorText}>{nameError}</Text>}
+
+              {/* Выбор иконки */}
+              <Text style={[s.fieldLabel, { marginTop: 14 }]}>{t('categoriesScreen.iconLabel')}</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                style={s.iconScroll}
+                contentContainerStyle={s.iconScrollContent}
+              >
+                {USER_ICON_OPTIONS.map((iconName) => {
+                  const active = form.icon === iconName;
+                  return (
+                    <TouchableOpacity
+                      key={iconName}
+                      style={[s.iconOption, active && s.iconOptionActive]}
+                      onPress={() => setForm(f => ({ ...f, icon: iconName }))}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons
+                        name={iconName as React.ComponentProps<typeof Ionicons>['name']}
+                        size={22}
+                        color={active ? colors.accent : colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Кнопки */}
+              <View style={s.modalBtns}>
+                <TouchableOpacity style={s.cancelBtn} onPress={closeForm} activeOpacity={0.7}>
+                  <Text style={s.cancelBtnText}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.saveBtn}
+                  onPress={handleSave}
+                  activeOpacity={0.8}
+                  disabled={saving}
+                >
+                  <Text style={s.saveBtnText}>
+                    {saving ? '…' : t('categoriesScreen.saveBtn')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -361,6 +377,9 @@ function makeStyles(th: AppTheme) {
     },
 
     // Модальный лист
+    modalRoot: {
+      flex: 1,
+    },
     modalOverlay: {
       flex:            1,
       backgroundColor: 'rgba(0,0,0,0.55)',
@@ -371,6 +390,7 @@ function makeStyles(th: AppTheme) {
       borderTopRightRadius: 20,
       padding:          24,
       paddingBottom:    40,
+      maxHeight:        '85%',
     },
     modalTitle: {
       color:        colors.textPrimary,
