@@ -61,9 +61,10 @@ const en: TranslationKeys = {
     avgConsumption:  'Avg. consumption',
     perLiter:        'per liter',
     per100km:        'L/100km',
-    reminders:       'Reminders',
-    noReminders:     'All schedules are on track',
-    odometer:        'Odometer',
+    reminders:          'Reminders',
+    noReminders:        'All schedules are on track',
+    odometer:           'Odometer',
+    recentTransactions: 'Recent transactions',
   },
 
   addFuel: {

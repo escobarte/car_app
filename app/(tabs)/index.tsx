@@ -31,8 +31,8 @@ import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import { formatMoney } from '@/constants/currencies';
 import {
-  carRepo, fuelRepo, expenseRepo, serviceRepo, reminderRepo,
-  Car, FuelEntry, Expense, ServiceRecord, Reminder,
+  carRepo, fuelRepo, expenseRepo, serviceRepo, reminderRepo, categoryRepo,
+  Car, FuelEntry, Expense, ServiceRecord, Reminder, Category,
 } from '@/db';
 import MarkDoneSheet from '@/components/MarkDoneSheet';
 
@@ -43,9 +43,19 @@ function currentYearMonth(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function formatCurrentMonth(locale: string): string {
-  const s = new Date().toLocaleDateString(locale, { month: 'long', year: 'numeric' });
-  return s.charAt(0).toUpperCase() + s.slice(1);
+// Полная текущая дата: «20 июля 2026» (RU, месяц в род. падеже) / «July 20, 2026» (EN).
+// ru-RU добавляет суффикс « г.» — убираем его для чистого вида.
+function formatCurrentDate(locale: string): string {
+  const s = new Date().toLocaleDateString(locale, {
+    day: 'numeric', month: 'long', year: 'numeric',
+  });
+  return s.replace(/\s*г\.\s*$/, '');
+}
+
+// Короткая дата строки транзакции: «20.07.26».
+function fmtShortDate(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}.${m}.${y.slice(2)}`;
 }
 
 const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
@@ -63,6 +73,12 @@ type ReminderRow = {
   unit:      'km' | 'days';
   status:    StatusKind;
 };
+
+// Строка блока «Последние транзакции» (заправка / расход / сервис).
+type RecentItem =
+  | { kind: 'fuel';    data: FuelEntry }
+  | { kind: 'expense'; data: Expense; category?: Category }
+  | { kind: 'service'; data: ServiceRecord };
 
 // ─── Расчёт статуса ─────────────────────────────────────────────────────────
 
@@ -111,6 +127,7 @@ export default function DashboardScreen() {
   const [avgPrice,     setAvgPrice]     = useState<number | null>(null);
   const [avgCons,      setAvgCons]      = useState<number | null>(null);
   const [remRows,      setRemRows]      = useState<ReminderRow[]>([]);
+  const [recent,       setRecent]       = useState<RecentItem[]>([]);
   const [loading,      setLoading]      = useState(true);
 
   // Bottom-sheet «Отметить выполнение»
@@ -120,7 +137,7 @@ export default function DashboardScreen() {
 
   const loadData = useCallback(async () => {
     const ym = currentYearMonth();
-    const [carData, fuelMonth, expMonth, allSvc, allFuel, reminders] =
+    const [carData, fuelMonth, expMonth, allSvc, allFuel, reminders, allExp, cats] =
       await Promise.all([
         carRepo.getCar(),
         fuelRepo.getFuelEntriesByMonth(ym),
@@ -128,6 +145,8 @@ export default function DashboardScreen() {
         serviceRepo.getAllServiceRecords(),
         fuelRepo.getAllFuelEntries(),
         reminderRepo.getAllReminders(),
+        expenseRepo.getAllExpenses(),
+        categoryRepo.getAllCategories(),
       ]);
 
     const svcMonth = allSvc.filter((sv) => sv.date.startsWith(ym));
@@ -152,11 +171,24 @@ export default function DashboardScreen() {
       .map((r) => calcStatus(r, currentOdo, today))
       .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
 
+    // 5 последних транзакций (заправки + расходы + сервис), по дате убыв.
+    const catMap = new Map(cats.map((c) => [c.id, c]));
+    const merged: RecentItem[] = [
+      ...allFuel.map((f): RecentItem => ({ kind: 'fuel', data: f })),
+      ...allExp.map((e): RecentItem  => ({ kind: 'expense', data: e, category: catMap.get(e.category_id) })),
+      ...allSvc.map((sv): RecentItem => ({ kind: 'service', data: sv })),
+    ];
+    merged.sort((a, b) => {
+      if (a.data.date !== b.data.date) return a.data.date < b.data.date ? 1 : -1;
+      return b.data.id - a.data.id;
+    });
+
     setCar(carData);
     setMonthlyTotal(total);
     setAvgPrice(avg(prices));
     setAvgCons(avg(consumptions));
     setRemRows(rows);
+    setRecent(merged.slice(0, 5));
   }, []);
 
   useFocusEffect(
@@ -173,8 +205,43 @@ export default function DashboardScreen() {
   // ── Производные ──────────────────────────────────────────────────────────
 
   const currCode   = car?.currency ?? '';
-  const monthLabel = useMemo(() => formatCurrentMonth(locale), [locale]);
+  const dateLabel  = useMemo(() => formatCurrentDate(locale), [locale]);
   const odometer   = car?.current_odometer.toLocaleString() ?? '—';
+
+  // ── Отображение строки транзакции ──────────────────────────────────────────
+  // Возвращает иконку, цвет акцента и краткое описание для строки.
+  function recentDisplay(item: RecentItem): {
+    icon:  React.ComponentProps<typeof Ionicons>['name'];
+    iconBg: string;
+    color: string;
+    title: string;
+    amount: number;
+  } {
+    if (item.kind === 'fuel') {
+      const f = item.data;
+      return {
+        icon: 'water', iconBg: colors.iconBgFuel, color: colors.accent,
+        title: `${f.liters.toFixed(1)} ${t('addFuel.liters').toLowerCase()}`,
+        amount: f.total_cost,
+      };
+    }
+    if (item.kind === 'expense') {
+      const e = item.data;
+      const cat = item.category;
+      const catName = cat ? (cat.key ? t(`categories.${cat.key}` as never) : cat.name) : '—';
+      return {
+        icon: 'receipt-outline', iconBg: colors.iconBgExpense, color: colors.statusSoon.text,
+        title: e.description || catName,
+        amount: e.amount,
+      };
+    }
+    const sv = item.data;
+    return {
+      icon: 'build-outline', iconBg: colors.iconBgService, color: colors.statusOk.text,
+      title: sv.note || t('history.maintenance'),
+      amount: sv.cost,
+    };
+  }
 
   function reminderLabel(row: ReminderRow): string {
     const n = Math.abs(row.remaining);
@@ -210,7 +277,7 @@ export default function DashboardScreen() {
       {/* ── 1. Шапка ─────────────────────────────────────────────────── */}
       <View style={s.topRow}>
         <View>
-          <Text style={s.monthLabel}>{monthLabel}</Text>
+          <Text style={s.monthLabel}>{dateLabel}</Text>
           <Text style={s.odoLabel}>
             {t('dashboard.odometer')}: {odometer} {t('common.km')}
           </Text>
@@ -334,6 +401,42 @@ export default function DashboardScreen() {
             );
           })}
         </View>
+      )}
+
+      {/* ── 5. Последние транзакции ────────────────────────────────────── */}
+      {recent.length > 0 && (
+        <>
+          <Text style={[s.sectionHeader, s.recentHeader]}>
+            {t('dashboard.recentTransactions')}
+          </Text>
+          <View style={s.recentList}>
+            {recent.map((item) => {
+              const d = recentDisplay(item);
+              return (
+                <TouchableOpacity
+                  key={`${item.kind}-${item.data.id}`}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // TODO: открыть модалку деталей записи (общий компонент
+                    // с экраном История). Появится отдельной задачей — заглушка.
+                  }}
+                  style={s.recentItem}
+                >
+                  <View style={[s.recentIconWrap, { backgroundColor: d.iconBg }]}>
+                    <Ionicons name={d.icon} size={18} color={d.color} />
+                  </View>
+                  <View style={s.recentBody}>
+                    <Text style={s.recentTitle} numberOfLines={1}>{d.title}</Text>
+                    <Text style={s.recentSub}>{fmtShortDate(item.data.date)}</Text>
+                  </View>
+                  <Text style={[s.recentAmount, { color: d.color }]}>
+                    {formatMoney(d.amount, currCode)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
       )}
 
         {/* Нижний отступ (таб-бар) */}
@@ -483,5 +586,32 @@ function makeStyles(th: AppTheme, topInset: number) {
       flex:       1,
       ...typography.cardText,
     },
+
+    // ── Секция «Последние транзакции» ──────────────────────────────────────
+    recentHeader: { marginTop: 24 },
+    recentList: { gap: 8 },
+    recentItem: {
+      flexDirection:     'row',
+      alignItems:        'center',
+      backgroundColor:   colors.surface,
+      borderRadius:      radius.card,
+      borderWidth:       1,
+      borderColor:       colors.border,
+      paddingVertical:   12,
+      paddingHorizontal: 14,
+    },
+    recentIconWrap: {
+      width:          36,
+      height:         36,
+      borderRadius:   10,
+      justifyContent: 'center',
+      alignItems:     'center',
+      marginRight:    12,
+      flexShrink:     0,
+    },
+    recentBody:  { flex: 1, marginRight: 8 },
+    recentTitle: { color: colors.textPrimary, ...typography.cardTextMedium, marginBottom: 2 },
+    recentSub:   { color: colors.textSecondary, ...typography.labelSmall },
+    recentAmount: { ...typography.cardTextMedium, textAlign: 'right', minWidth: 72 },
   });
 }
