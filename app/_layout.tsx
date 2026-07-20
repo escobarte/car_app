@@ -30,7 +30,7 @@ import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { initDatabase, settingsRepo } from '@/db';
+import { initDatabase, settingsRepo, fuelRepo } from '@/db';
 import { importLegacyData, ImportResult } from '@/db/legacy-import';
 import i18n, { isSupportedLanguage } from '@/i18n';
 import { AppThemeProvider, useThemeCtx } from '@/contexts/theme-context';
@@ -91,6 +91,10 @@ export default function RootLayout() {
 
       const result = await importLegacyData();
       setImportResult(result);
+
+      // Разовая миграция: пересчёт consumption по полной формуле §6.2
+      // для записей, сохранённых по старой упрощённой формуле. Идемпотентна.
+      await fuelRepo.recalcAllFullTankConsumption();
 
       if (!IS_EXPO_GO) {
         try {

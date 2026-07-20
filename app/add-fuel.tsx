@@ -35,6 +35,7 @@ import { carRepo } from '@/db';
 import {
   addFuelEntry,
   getLastFullTankEntry,
+  getPartialLitersSince,
   getFuelEntryById,
   updateFuelEntry,
 } from '@/db/repositories/fuel';
@@ -92,6 +93,8 @@ export default function AddFuelScreen() {
   const [currency,        setCurrency]        = useState('MDL');
   const [currentOdometer, setCurrentOdometer] = useState(0);
   const [lastFullOdo,     setLastFullOdo]     = useState<number | null>(null);
+  // Литры неполных заправок, накопленные после последнего полного бака (§6.2).
+  const [partialLiters,   setPartialLiters]   = useState(0);
   const [saving,          setSaving]          = useState(false);
   const [loadingEdit,     setLoadingEdit]     = useState(isEdit);
 
@@ -109,7 +112,11 @@ export default function AddFuelScreen() {
           setOdometer(String(car.current_odometer));
         }
       }
-      if (lastFull) setLastFullOdo(lastFull.odometer);
+      if (lastFull) {
+        setLastFullOdo(lastFull.odometer);
+        // Копим литры неполных заправок после последнего полного бака.
+        setPartialLiters(await getPartialLitersSince(1, lastFull.odometer));
+      }
 
       // Загрузка существующей записи для редактирования
       if (isEdit && editId) {
@@ -149,8 +156,9 @@ export default function AddFuelScreen() {
     odoNum > lastFullOdo &&
     okLiters;
 
+  // §6.2: числитель = литры этого полного бака + накопленные литры неполных.
   const previewConsumption: string | null = canCalcConsumption
-    ? ((litersNum / (odoNum - lastFullOdo!)) * 100).toFixed(2)
+    ? (((litersNum + partialLiters) / (odoNum - lastFullOdo!)) * 100).toFixed(2)
     : null;
 
   // ── Валидация ─────────────────────────────────────────────────────────────

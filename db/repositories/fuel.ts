@@ -34,6 +34,36 @@ export async function getLastFullTankEntry(): Promise<FuelEntry | null> {
 }
 
 /**
+ * Сумма литров неполных заправок строго МЕЖДУ двумя пробегами (fromOdo, toOdo).
+ * §6.2: эти литры сожжены на интервале между полными баками и идут в числитель.
+ */
+async function sumPartialLitersBetween(
+  carId: number, fromOdo: number, toOdo: number
+): Promise<number> {
+  const db = await openDatabase();
+  const row = await db.getFirstAsync<{ liters: number }>(
+    `SELECT COALESCE(SUM(liters), 0) AS liters FROM fuel_entry
+      WHERE car_id = ? AND is_full_tank = 0 AND odometer > ? AND odometer < ?;`,
+    [carId, fromOdo, toOdo]
+  );
+  return row?.liters ?? 0;
+}
+
+/**
+ * Сумма литров неполных заправок с пробегом строго больше odo — для живого
+ * предпросмотра расхода в форме (следующий полный бак ещё не сохранён).
+ */
+export async function getPartialLitersSince(carId: number, odo: number): Promise<number> {
+  const db = await openDatabase();
+  const row = await db.getFirstAsync<{ liters: number }>(
+    `SELECT COALESCE(SUM(liters), 0) AS liters FROM fuel_entry
+      WHERE car_id = ? AND is_full_tank = 0 AND odometer > ?;`,
+    [carId, odo]
+  );
+  return row?.liters ?? 0;
+}
+
+/**
  * Добавить заправку.
  * price_per_liter считается автоматически.
  * Если бак полный — считается consumption.
@@ -46,13 +76,20 @@ export async function addFuelEntry(
 
   const price_per_liter = parseFloat((entry.total_cost / entry.liters).toFixed(2));
 
+  // Расход (§6.2, полная формула). Только для полного бака и при наличии
+  // предыдущего полного бака. В числитель — литры этого полного бака ПЛЮС
+  // литры всех неполных заправок строго между предыдущим и текущим полным.
   let consumption: number | null = null;
   if (entry.is_full_tank === 1) {
     const prev = await getLastFullTankEntry();
     if (prev) {
       const distance = entry.odometer - prev.odometer;
       if (distance > 0) {
-        consumption = parseFloat(((entry.liters / distance) * 100).toFixed(2));
+        const partialLiters = await sumPartialLitersBetween(
+          entry.car_id, prev.odometer, entry.odometer
+        );
+        const totalLiters = entry.liters + partialLiters;
+        consumption = parseFloat(((totalLiters / distance) * 100).toFixed(2));
       }
     }
   }
@@ -106,4 +143,48 @@ export async function updateFuelEntry(
     `UPDATE fuel_entry SET ${setClauses} WHERE id = ?;`,
     ...values, id
   );
+}
+
+/**
+ * Разовый пересчёт consumption у ВСЕХ полных баков по полной формуле §6.2
+ * (миграция для записей, сохранённых по старой упрощённой формуле).
+ *
+ * Для каждого полного бака: литры_всего = литры полного + сумма литров
+ * неполных строго между предыдущим и текущим полным; consumption =
+ * литры_всего / пройдено × 100. У первого полного (без предыдущего) — null.
+ * У неполных баков consumption не трогается (остаётся null).
+ *
+ * Идемпотентна: повторный вызов даёт тот же результат.
+ * Возвращает число обновлённых записей (у которых значение изменилось).
+ */
+export async function recalcAllFullTankConsumption(): Promise<number> {
+  const db = await openDatabase();
+  const fulls = await db.getAllAsync<FuelEntry>(
+    `SELECT * FROM fuel_entry WHERE is_full_tank = 1 ORDER BY car_id ASC, odometer ASC, id ASC;`
+  );
+
+  let updated = 0;
+  const prevOdoByCar: Record<number, number> = {};
+
+  for (const f of fulls) {
+    const prevOdo = prevOdoByCar[f.car_id];
+    let consumption: number | null = null;
+
+    if (prevOdo !== undefined) {
+      const distance = f.odometer - prevOdo;
+      if (distance > 0) {
+        const partialLiters = await sumPartialLitersBetween(f.car_id, prevOdo, f.odometer);
+        const totalLiters = f.liters + partialLiters;
+        consumption = parseFloat(((totalLiters / distance) * 100).toFixed(2));
+      }
+    }
+
+    if (f.consumption !== consumption) {
+      await db.runAsync('UPDATE fuel_entry SET consumption = ? WHERE id = ?;', [consumption, f.id]);
+      updated++;
+    }
+    prevOdoByCar[f.car_id] = f.odometer;
+  }
+
+  return updated;
 }
