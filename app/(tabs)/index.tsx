@@ -325,7 +325,40 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* ── 4. Напоминания ─────────────────────────────────────────────── */}
+      {/* ── 4. Последние транзакции ────────────────────────────────────── */}
+      {recent.length > 0 && (
+        <>
+          <Text style={[s.sectionHeader, s.recentHeader]}>
+            {t('dashboard.recentTransactions')}
+          </Text>
+          <View style={s.recentList}>
+            {recent.map((item) => {
+              const d = recentDisplay(item);
+              return (
+                <TouchableOpacity
+                  key={`${item.kind}-${item.data.id}`}
+                  activeOpacity={0.7}
+                  onPress={() => setDetail(item)}
+                  style={s.recentItem}
+                >
+                  <View style={[s.recentIconWrap, { backgroundColor: d.iconBg }]}>
+                    <Ionicons name={d.icon} size={18} color={d.color} />
+                  </View>
+                  <View style={s.recentBody}>
+                    <Text style={s.recentTitle} numberOfLines={1}>{d.title}</Text>
+                    <Text style={s.recentSub}>{fmtShortDate(item.data.date)}</Text>
+                  </View>
+                  <Text style={[s.recentAmount, { color: d.color }]}>
+                    {formatMoney(d.amount, currCode)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      )}
+
+      {/* ── 5. Напоминания ─────────────────────────────────────────────── */}
       <Text style={s.sectionHeader}>{t('dashboard.reminders')}</Text>
 
       {remRows.length === 0 ? (
@@ -404,39 +437,6 @@ export default function DashboardScreen() {
             );
           })}
         </View>
-      )}
-
-      {/* ── 5. Последние транзакции ────────────────────────────────────── */}
-      {recent.length > 0 && (
-        <>
-          <Text style={[s.sectionHeader, s.recentHeader]}>
-            {t('dashboard.recentTransactions')}
-          </Text>
-          <View style={s.recentList}>
-            {recent.map((item) => {
-              const d = recentDisplay(item);
-              return (
-                <TouchableOpacity
-                  key={`${item.kind}-${item.data.id}`}
-                  activeOpacity={0.7}
-                  onPress={() => setDetail(item)}
-                  style={s.recentItem}
-                >
-                  <View style={[s.recentIconWrap, { backgroundColor: d.iconBg }]}>
-                    <Ionicons name={d.icon} size={18} color={d.color} />
-                  </View>
-                  <View style={s.recentBody}>
-                    <Text style={s.recentTitle} numberOfLines={1}>{d.title}</Text>
-                    <Text style={s.recentSub}>{fmtShortDate(item.data.date)}</Text>
-                  </View>
-                  <Text style={[s.recentAmount, { color: d.color }]}>
-                    {formatMoney(d.amount, currCode)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </>
       )}
 
         {/* Нижний отступ (таб-бар) */}

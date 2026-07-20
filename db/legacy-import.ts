@@ -2,8 +2,9 @@
  * Разовый импорт старых данных из Google-таблицы (раздел 8 ТЗ).
  *
  * Данные сверены пользователем и захардкожены здесь как константы.
- * Функция importLegacyData() безопасна для повторного вызова:
- * если в fuel_entry уже есть записи — импорт пропускается.
+ * Функция importLegacyData() безопасна для повторного вызова и идемпотентна
+ * по строкам: вставляются только записи, которых ещё нет в базе (дедуп по
+ * уникальному ключу). Это позволяет дозаливать новые строки из CSV без дублей.
  *
  * Цена литра и расход НЕ импортируются — они пересчитываются автоматически
  * через addFuelEntry() по формулам из раздела 6.1–6.2 ТЗ.
@@ -45,6 +46,10 @@ const FUEL_SEEDS: FuelSeed[] = [
   { date: '2026-04-26', odometer: 204205, liters: 45.40, total_cost: 1324.00, is_full_tank: 1 },
   { date: '2026-05-17', odometer: 204879, liters: 12.97, total_cost: 400.00,  is_full_tank: 0 },
   { date: '2026-05-21', odometer: 205071, liters: 6.43,  total_cost: 200.00,  is_full_tank: 0 },
+  // Дозаливка CSV от 2026-07-20 (новые заправки):
+  { date: '2026-05-30', odometer: 205367, liters: 16.30, total_cost: 500.00,  is_full_tank: 0 },
+  { date: '2026-06-12', odometer: 205669, liters: 17.41, total_cost: 500.00,  is_full_tank: 0 },
+  { date: '2026-06-14', odometer: 205906, liters: 27.86, total_cost: 800.00,  is_full_tank: 0 },
 ];
 
 // ─── Расходы (14 записей, сверены 27.05.2026) ───────────────────────────────
@@ -81,25 +86,32 @@ export type ImportResult = {
 };
 
 // ─── Основная функция ────────────────────────────────────────────────────────
+//
+// Идемпотентно по строкам: при каждом запуске вставляются ТОЛЬКО те записи из
+// сидов, которых ещё нет в базе. Уникальный ключ заправки — дата + пробег +
+// сумма; расхода — дата + сумма + описание. Это позволяет безопасно дозаливать
+// новые строки из CSV, не задваивая существующие.
+//
+// addFuelEntry() сам считает price_per_liter (6.1), consumption для полных
+// баков (6.2) и обновляет CAR.current_odometer.
 export async function importLegacyData(): Promise<ImportResult> {
   const db = await openDatabase();
-
-  // Проверка: если в таблице уже есть данные — не импортируем повторно
-  const existing = await db.getFirstAsync<{ cnt: number }>(
-    'SELECT COUNT(*) as cnt FROM fuel_entry WHERE car_id = 1;'
-  );
-  if (existing && existing.cnt > 0) {
-    return { fuelCount: 0, expenseCount: 0, skipped: true };
-  }
 
   // Словарь category_key → category_id (из уже заполненной таблицы)
   const categories = await getAllCategories();
   const catMap = Object.fromEntries(categories.map((c) => [c.key, c.id]));
 
-  // 1. Заправки — вставляем по одной в хронологическом порядке.
-  //    addFuelEntry() автоматически считает price_per_liter и consumption.
+  // 1. Заправки — вставляем только отсутствующие (дедуп по дате+пробегу+сумме).
   let fuelCount = 0;
   for (const seed of FUEL_SEEDS) {
+    const found = await db.getFirstAsync<{ id: number }>(
+      `SELECT id FROM fuel_entry
+        WHERE car_id = 1 AND date = ? AND odometer = ? AND ABS(total_cost - ?) < 0.01
+        LIMIT 1;`,
+      [seed.date, seed.odometer, seed.total_cost]
+    );
+    if (found) continue;
+
     await addFuelEntry({
       car_id:      1,
       date:        seed.date,
@@ -111,7 +123,7 @@ export async function importLegacyData(): Promise<ImportResult> {
     fuelCount++;
   }
 
-  // 2. Расходы
+  // 2. Расходы — вставляем только отсутствующие (дедуп по дате+сумме+описанию).
   let expenseCount = 0;
   for (const seed of EXPENSE_SEEDS) {
     const category_id = catMap[seed.category_key];
@@ -119,6 +131,15 @@ export async function importLegacyData(): Promise<ImportResult> {
       console.warn(`[import] Категория не найдена: ${seed.category_key}`);
       continue;
     }
+
+    const found = await db.getFirstAsync<{ id: number }>(
+      `SELECT id FROM expense
+        WHERE car_id = 1 AND date = ? AND ABS(amount - ?) < 0.01 AND description = ?
+        LIMIT 1;`,
+      [seed.date, seed.amount, seed.description]
+    );
+    if (found) continue;
+
     await addExpense({
       car_id:      1,
       category_id,
@@ -130,9 +151,11 @@ export async function importLegacyData(): Promise<ImportResult> {
     expenseCount++;
   }
 
-  // 3. Явно выставляем максимальный пробег (205 071) на случай,
-  //    если syncOdometer что-то пропустил при частичных заправках.
-  await syncOdometer(205071);
+  // 3. Явно выставляем максимальный пробег из сидов на случай, если
+  //    syncOdometer что-то пропустил при частичных заправках.
+  const maxOdo = FUEL_SEEDS.reduce((m, f) => Math.max(m, f.odometer), 0);
+  await syncOdometer(maxOdo);
 
-  return { fuelCount, expenseCount, skipped: false };
+  // skipped = ничего нового не добавили (для отладочного экрана db-check).
+  return { fuelCount, expenseCount, skipped: fuelCount === 0 && expenseCount === 0 };
 }
