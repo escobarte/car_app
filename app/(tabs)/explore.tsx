@@ -4,8 +4,9 @@
  *
  * Сверху вниз:
  *  1. Переключатель-таблетки: Топливо / Расходы / Расход (л/100)
- *  2. Сумма / среднее за 6 месяцев
- *  3. Столбчатый график последних 6 месяцев (текущий — акцентный цвет)
+ *  2. Сумма выбранного месяца (над графиком)
+ *  3. Столбчатый график последних 6 месяцев; тап по столбику выделяет месяц
+ *     (акцентный градиент), остальные приглушены. По умолчанию — последний месяц.
  *  4. Разбивка по категориям (только вкладка «Расходы»)
  *
  * Никаких внешних chart-библиотек — только View + StyleSheet.
@@ -40,8 +41,8 @@ const MONTHS_COUNT = 6;
 /** Высота области столбиков; верхние 22 px резервируются под подписи значений */
 const CHART_H      = 160;
 const BAR_MAX_H    = CHART_H - 22;
-/** Прошлые месяцы: accent @ ~20% — видно, но не конкурирует с текущим */
-const BAR_PAST_CLR = 'rgba(61,181,245,0.20)';
+/** Прозрачность приглушённых (невыбранных) столбиков — цвет берётся из темы */
+const BAR_DIM_OPACITY = 0.2;
 
 type TabKey = 'fuel' | 'expenses' | 'consumption';
 
@@ -73,6 +74,15 @@ function monthAbbr(ym: string, locale: string): string {
   // убираем точку (рус.) и capitalise
   const clean = raw.replace('.', '');
   return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+/** Полное название месяца + год: «Июль 2026» (ru убирает суффикс « г.»). */
+function monthFull(ym: string, locale: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  const raw = new Date(y, m - 1, 1)
+    .toLocaleDateString(locale, { month: 'long', year: 'numeric' })
+    .replace(/\s*г\.\s*$/, '');
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
 // ─── Утилиты: форматирование ──────────────────────────────────────────────────
@@ -158,7 +168,9 @@ export default function StatsScreen() {
   const s = useMemo(() => makeStyles(th, insets.top), [th, insets.top]);
 
   // ── Состояние ──────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<TabKey>('fuel');
+  const [activeTab,  setActiveTab]  = useState<TabKey>('fuel');
+  // Выбранный столбик графика; по умолчанию — последний (текущий) месяц.
+  const [selectedYM, setSelectedYM] = useState<string>(CURR_YM);
   const [car,       setCar]       = useState<Car | null>(null);
   const [fuelMap,   setFuelMap]   = useState<Record<string, number>>({});
   const [expMap,    setExpMap]    = useState<Record<string, number>>({});
@@ -203,21 +215,21 @@ export default function StatsScreen() {
     [chartData],
   );
 
-  const summary: number = useMemo(() => {
-    const vals = chartData.map(d => d.value).filter(v => v > 0);
-    if (vals.length === 0) return 0;
-    return activeTab === 'consumption'
-      ? vals.reduce((s, v) => s + v, 0) / vals.length   // среднее
-      : vals.reduce((s, v) => s + v, 0);                 // сумма
-  }, [chartData, activeTab]);
+  // Значение выбранного месяца (для показа над графиком).
+  const selectedValue = useMemo(
+    () => chartData.find(d => d.ym === selectedYM)?.value ?? 0,
+    [chartData, selectedYM],
+  );
 
   const currCode = car?.currency ?? '';
   const hasData = chartData.some(d => d.value > 0);
 
-  function summaryText(): string {
-    if (!hasData) return t('stats.noData');
-    if (activeTab === 'consumption') return `${summary.toFixed(1)} ${t('stats.lPer100')}`;
-    return formatMoney(summary, currCode);
+  // Текст суммы/расхода за выбранный месяц.
+  function selectedText(): string {
+    if (activeTab === 'consumption') {
+      return selectedValue > 0 ? `${selectedValue.toFixed(1)} ${t('stats.lPer100')}` : '—';
+    }
+    return formatMoney(selectedValue, currCode);
   }
 
   // ── Загрузка ───────────────────────────────────────────────────────────────
@@ -273,14 +285,10 @@ export default function StatsScreen() {
         })}
       </View>
 
-      {/* ── Сумма / среднее ────────────────────────────────────────────────── */}
+      {/* ── Сумма выбранного месяца ────────────────────────────────────────── */}
       <View style={s.summaryRow}>
-        <Text style={s.summaryLabel}>
-          {activeTab === 'consumption'
-            ? t('stats.avgConsLabel')
-            : t('stats.totalLabel')}
-        </Text>
-        <Text style={s.summaryValue}>{summaryText()}</Text>
+        <Text style={s.summaryLabel}>{monthFull(selectedYM, locale)}</Text>
+        <Text style={s.summaryValue}>{selectedText()}</Text>
       </View>
 
       {/* ── Столбчатый график ──────────────────────────────────────────────── */}
@@ -294,13 +302,22 @@ export default function StatsScreen() {
             {/* Область столбиков */}
             <View style={[s.barsArea, { height: CHART_H }]}>
               {chartData.map(({ ym, value }) => {
-                const isCurrent = ym === CURR_YM;
+                const isSelected = ym === selectedYM;
+                // Выбранный пустой месяц показываем маленьким «нубом», чтобы
+                // подсветка была видна; невыбранный пустой месяц — без бара.
                 const barH = value > 0
                   ? Math.max(Math.round((value / maxVal) * BAR_MAX_H), 4)
-                  : 0;
+                  : (isSelected ? 4 : 0);
 
                 return (
-                  <View key={ym} style={s.barWrapper}>
+                  <TouchableOpacity
+                    key={ym}
+                    style={s.barWrapper}
+                    activeOpacity={0.8}
+                    onPress={() => setSelectedYM(ym)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${monthFull(ym, locale)}`}
+                  >
                     {/* Подпись значения над столбиком */}
                     {value > 0 && (
                       <Text
@@ -308,7 +325,7 @@ export default function StatsScreen() {
                           s.barValueLabel,
                           {
                             bottom:  barH + 2,
-                            color:   isCurrent ? colors.accent : colors.textWeak,
+                            color:   isSelected ? colors.accent : colors.textWeak,
                           },
                         ]}
                         numberOfLines={1}
@@ -316,17 +333,18 @@ export default function StatsScreen() {
                         {fmtShort(value)}
                       </Text>
                     )}
-                    {/* Столбик */}
-                    <View
-                      style={[
-                        s.bar,
-                        {
-                          height:          barH,
-                          backgroundColor: isCurrent ? colors.accent : BAR_PAST_CLR,
-                        },
-                      ]}
-                    />
-                  </View>
+                    {/* Столбик: выбранный — акцентный градиент, остальные приглушены */}
+                    {isSelected ? (
+                      <LinearGradient
+                        colors={gradient.accent.colors}
+                        start={gradient.accent.start}
+                        end={gradient.accent.end}
+                        style={[s.bar, { height: barH }]}
+                      />
+                    ) : (
+                      <View style={[s.bar, s.barDimmed, { height: barH }]} />
+                    )}
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -334,17 +352,22 @@ export default function StatsScreen() {
             {/* Подписи месяцев */}
             <View style={s.labelsRow}>
               {chartData.map(({ ym }) => (
-                <View key={ym} style={s.labelCell}>
+                <TouchableOpacity
+                  key={ym}
+                  style={s.labelCell}
+                  activeOpacity={0.8}
+                  onPress={() => setSelectedYM(ym)}
+                >
                   <Text
                     style={[
                       s.monthLabel,
-                      ym === CURR_YM && { color: colors.accent },
+                      ym === selectedYM && { color: colors.accent },
                     ]}
                     numberOfLines={1}
                   >
                     {monthAbbr(ym, locale)}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </>
@@ -521,6 +544,11 @@ function makeStyles(th: AppTheme, topInset: number) {
       width:        '75%',
       borderRadius: 4,
       minHeight:    0,
+    },
+    // Приглушённый (невыбранный) столбик: цвет акцента из темы + прозрачность
+    barDimmed: {
+      backgroundColor: colors.accent,
+      opacity:         BAR_DIM_OPACITY,
     },
 
     // Подписи месяцев под графиком
