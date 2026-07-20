@@ -198,6 +198,12 @@ const ru = {
     avgConsLabel:      'Средний расход',
     lPer100:           'л/100 км',
     categoryBreakdown: 'По категориям',
+    shareByMonth:      'Доля трат по месяцам',
+    trendVs:           '{{pct}}% к {{month}}',
+    metricAvg:         'Средний расход',
+    metricDistance:    'Пробег за период',
+    metricMin:         'Минимум',
+    metricMax:         'Максимум',
   },
 
   // ── Настройки (Этап 9) ───────────────────────────────────────────────────

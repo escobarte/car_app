@@ -30,6 +30,7 @@ import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import { formatMoney } from '@/constants/currencies';
 import { resolveIcon } from '@/utils/icons';
+import DonutByMonth from '@/components/DonutByMonth';
 import {
   carRepo, fuelRepo, expenseRepo, categoryRepo,
   Car, FuelEntry, Expense, Category,
@@ -85,6 +86,19 @@ function monthFull(ym: string, locale: string): string {
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
+// Русские месяцы в дательном падеже — для строки тренда «к марту».
+const RU_MONTHS_DATIVE = [
+  'январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню',
+  'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю',
+];
+
+/** Название предыдущего месяца для тренда: ru — дательный, en — короткое. */
+function prevMonthName(ym: string, locale: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  if (locale.startsWith('ru')) return RU_MONTHS_DATIVE[m - 1];
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short' });
+}
+
 // ─── Утилиты: форматирование ──────────────────────────────────────────────────
 
 /** Компактное число для подписи над столбиком. */
@@ -136,6 +150,27 @@ function aggConsumption(fuel: FuelEntry[], months: string[]): Record<string, num
   return r;
 }
 
+// Метрики расхода за период (вкладка «Расход л/100»). л/100 — только полные баки (ТЗ 6.2).
+type ConsStats = { avg: number; distance: number; min: number; max: number };
+
+function buildConsStats(fuel: FuelEntry[], months: string[]): ConsStats {
+  const periodFuel = fuel.filter(f => months.includes(f.date.slice(0, 7)));
+  const cons = periodFuel
+    .filter(f => f.is_full_tank === 1 && f.consumption != null)
+    .map(f => f.consumption as number);
+
+  const odos = periodFuel.map(f => f.odometer).filter(o => o > 0);
+  const distance = odos.length >= 2 ? Math.max(...odos) - Math.min(...odos) : 0;
+
+  if (cons.length === 0) return { avg: 0, distance, min: 0, max: 0 };
+  return {
+    avg:      cons.reduce((s, v) => s + v, 0) / cons.length,
+    distance,
+    min:      Math.min(...cons),
+    max:      Math.max(...cons),
+  };
+}
+
 type CatStat = { cat: Category; total: number };
 
 function buildCatStats(
@@ -175,6 +210,7 @@ export default function StatsScreen() {
   const [fuelMap,   setFuelMap]   = useState<Record<string, number>>({});
   const [expMap,    setExpMap]    = useState<Record<string, number>>({});
   const [consMap,   setConsMap]   = useState<Record<string, number>>({});
+  const [consStats, setConsStats] = useState<ConsStats | null>(null);
   const [catStats,  setCatStats]  = useState<CatStat[]>([]);
   const [loading,   setLoading]   = useState(true);
 
@@ -195,6 +231,7 @@ export default function StatsScreen() {
         setFuelMap(aggFuel(fuel, MONTHS));
         setExpMap(aggExpenses(expenses, MONTHS));
         setConsMap(aggConsumption(fuel, MONTHS));
+        setConsStats(buildConsStats(fuel, MONTHS));
         setCatStats(buildCatStats(expenses, cats, MONTHS));
         setLoading(false);
       })().catch(console.error);
@@ -231,6 +268,17 @@ export default function StatsScreen() {
     }
     return formatMoney(selectedValue, currCode);
   }
+
+  // ── Тренд к предыдущему месяцу набора ───────────────────────────────────────
+  // Меньше (трат / расхода) = хорошо (success), больше = плохо (danger) —
+  // правило едино для всех трёх вкладок. У первого месяца тренд прячем.
+  const selIdx    = MONTHS.indexOf(selectedYM);
+  const prevYM    = selIdx > 0 ? MONTHS[selIdx - 1] : '';
+  const prevValue = selIdx > 0 ? (chartData[selIdx - 1]?.value ?? 0) : 0;
+  const showTrend = selIdx > 0 && prevValue > 0 && selectedValue > 0 && selectedValue !== prevValue;
+  const trendDown = selectedValue < prevValue;
+  const trendPct  = showTrend ? Math.round((Math.abs(selectedValue - prevValue) / prevValue) * 100) : 0;
+  const trendClr  = trendDown ? colors.statusOk : colors.statusDue;
 
   // ── Загрузка ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -285,10 +333,24 @@ export default function StatsScreen() {
         })}
       </View>
 
-      {/* ── Сумма выбранного месяца ────────────────────────────────────────── */}
+      {/* ── Сумма выбранного месяца + тренд к предыдущему ───────────────────── */}
       <View style={s.summaryRow}>
         <Text style={s.summaryLabel}>{monthFull(selectedYM, locale)}</Text>
-        <Text style={s.summaryValue}>{selectedText()}</Text>
+        <View style={s.summaryRight}>
+          <Text style={s.summaryValue}>{selectedText()}</Text>
+          {showTrend && (
+            <View style={[s.trendBadge, { backgroundColor: trendClr.background }]}>
+              <Ionicons
+                name={trendDown ? 'arrow-down' : 'arrow-up'}
+                size={12}
+                color={trendClr.text}
+              />
+              <Text style={[s.trendText, { color: trendClr.text }]}>
+                {t('stats.trendVs', { pct: trendPct, month: prevMonthName(prevYM, locale) })}
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
 
       {/* ── Столбчатый график ──────────────────────────────────────────────── */}
@@ -373,6 +435,49 @@ export default function StatsScreen() {
           </>
         )}
       </View>
+
+      {/* ── Доля трат по месяцам — donut (только «Топливо») ─────────────────── */}
+      {activeTab === 'fuel' && hasData && (
+        <DonutByMonth
+          data={MONTHS.map(ym => ({
+            key:   ym,
+            label: monthAbbr(ym, locale),
+            value: fuelMap[ym] ?? 0,
+          }))}
+        />
+      )}
+
+      {/* ── Метрики расхода 2×2 (только «Расход л/100») ─────────────────────── */}
+      {activeTab === 'consumption' && consStats && (
+        <View style={s.metricsGrid}>
+          <View style={s.metricCell}>
+            <Text style={s.metricLabel}>{t('stats.metricAvg')}</Text>
+            <Text style={s.metricValue}>
+              {consStats.avg > 0 ? `${consStats.avg.toFixed(1)} ${t('stats.lPer100')}` : '—'}
+            </Text>
+          </View>
+          <View style={s.metricCell}>
+            <Text style={s.metricLabel}>{t('stats.metricDistance')}</Text>
+            <Text style={s.metricValue}>
+              {consStats.distance > 0
+                ? `${consStats.distance.toLocaleString()} ${t('common.km')}`
+                : '—'}
+            </Text>
+          </View>
+          <View style={s.metricCell}>
+            <Text style={s.metricLabel}>{t('stats.metricMin')}</Text>
+            <Text style={[s.metricValue, { color: colors.statusOk.text }]}>
+              {consStats.min > 0 ? `${consStats.min.toFixed(1)} ${t('stats.lPer100')}` : '—'}
+            </Text>
+          </View>
+          <View style={s.metricCell}>
+            <Text style={s.metricLabel}>{t('stats.metricMax')}</Text>
+            <Text style={[s.metricValue, { color: colors.statusDue.text }]}>
+              {consStats.max > 0 ? `${consStats.max.toFixed(1)} ${t('stats.lPer100')}` : '—'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* ── Разбивка по категориям (только «Расходы») ──────────────────────── */}
       {activeTab === 'expenses' && (
@@ -486,11 +591,11 @@ function makeStyles(th: AppTheme, topInset: number) {
     pillText:       { color: colors.textSecondary, fontSize: 12, fontWeight: '400' as const },
     pillTextActive: { color: '#ffffff',            fontSize: 12, fontWeight: '500' as const },
 
-    // ── Сумма ──────────────────────────────────────────────────────────────────
+    // ── Сумма + тренд ────────────────────────────────────────────────────────
     summaryRow: {
       flexDirection:  'row',
       justifyContent: 'space-between',
-      alignItems:     'baseline',
+      alignItems:     'flex-start',
       marginBottom:   12,
       paddingHorizontal: 2,
     },
@@ -499,8 +604,48 @@ function makeStyles(th: AppTheme, topInset: number) {
       ...typography.labelSmall,
       textTransform: 'uppercase',
       letterSpacing: 0.5,
+      marginTop:     4,
     },
+    summaryRight: { alignItems: 'flex-end' },
     summaryValue: {
+      color:      colors.textPrimary,
+      fontSize:   typography.cardValue.fontSize,
+      fontWeight: typography.cardValue.fontWeight,
+    },
+    trendBadge: {
+      flexDirection:     'row',
+      alignItems:        'center',
+      gap:               3,
+      marginTop:         6,
+      paddingHorizontal: 8,
+      paddingVertical:   3,
+      borderRadius:      radius.badge,
+    },
+    trendText: { ...typography.labelSmall },
+
+    // ── Метрики расхода 2×2 ───────────────────────────────────────────────────
+    metricsGrid: {
+      flexDirection: 'row',
+      flexWrap:      'wrap',
+      gap:           10,
+      marginBottom:  20,
+    },
+    metricCell: {
+      // две колонки: (100% - gap) / 2
+      width:           '48%',
+      flexGrow:        1,
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      padding:         16,
+    },
+    metricLabel: {
+      color:         colors.textSecondary,
+      ...typography.labelSmall,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom:  8,
+    },
+    metricValue: {
       color:      colors.textPrimary,
       fontSize:   typography.cardValue.fontSize,
       fontWeight: typography.cardValue.fontWeight,

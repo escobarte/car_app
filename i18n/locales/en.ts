@@ -178,6 +178,12 @@ const en: TranslationKeys = {
     avgConsLabel:      'Avg. consumption',
     lPer100:           'L/100 km',
     categoryBreakdown: 'By category',
+    shareByMonth:      'Share of spending by month',
+    trendVs:           '{{pct}}% vs {{month}}',
+    metricAvg:         'Avg. consumption',
+    metricDistance:    'Distance for period',
+    metricMin:         'Minimum',
+    metricMax:         'Maximum',
   },
 
   settings: {
