@@ -150,6 +150,22 @@ const en: TranslationKeys = {
     filterFuel:    'Fuel',
     filterExpense: 'Expenses',
     filterService: 'Service',
+    sortDate:      'Date',
+    sortAmount:    'Amount',
+  },
+
+  // ── Record details (modal) ───────────────────────────────────────────────
+  recordDetail: {
+    date:          'Date',
+    odometer:      'Odometer',
+    liters:        'Liters',
+    total:         'Total',
+    pricePerLiter: 'Price per liter',
+    fullTank:      'Full tank',
+    consumption:   'Consumption',
+    category:      'Category',
+    description:   'Description',
+    note:          'Note',
   },
 
   stats: {

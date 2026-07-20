@@ -32,6 +32,7 @@ import {
   fuelRepo, expenseRepo, serviceRepo, categoryRepo, carRepo,
   FuelEntry, Expense, ServiceRecord, Category, Car,
 } from '@/db';
+import RecordDetailModal from '@/components/RecordDetailModal';
 
 // ─── Типы ──────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,17 @@ type ServiceItem = { kind: 'service'; data: ServiceRecord };
 type HistoryItem = FuelItem | ExpenseItem | ServiceItem;
 
 type Section = { title: string; data: HistoryItem[] };
+
+type SortField = 'date' | 'amount';
+type SortDir   = 'asc' | 'desc';
+type SortState = { field: SortField; dir: SortDir };
+
+// Сумма записи (для сортировки по сумме).
+function itemAmount(item: HistoryItem): number {
+  if (item.kind === 'fuel')    return item.data.total_cost;
+  if (item.kind === 'expense') return item.data.amount;
+  return item.data.cost;
+}
 
 // ─── Утилиты ───────────────────────────────────────────────────────────────
 
@@ -104,6 +116,31 @@ function makeStyles(th: AppTheme, topInset = 0) {
     pillText:       { color: colors.textSecondary, ...typography.labelSmall },
     pillTextActive: { color: colors.accent },
 
+    // Сортировка
+    sortRow: {
+      flexDirection:     'row',
+      paddingHorizontal: 12,
+      paddingBottom:     12,
+      gap:               8,
+    },
+    sortPill: {
+      flexDirection:     'row',
+      alignItems:        'center',
+      gap:               4,
+      paddingHorizontal: 14,
+      paddingVertical:   7,
+      borderRadius:      radius.pill,
+      borderWidth:       1,
+      borderColor:       colors.border,
+      backgroundColor:   colors.surface,
+    },
+    sortPillActive: {
+      borderColor:     colors.borderAccent,
+      backgroundColor: colors.activeCard,
+    },
+    sortPillText:       { color: colors.textSecondary, ...typography.labelSmall },
+    sortPillTextActive: { color: colors.accent },
+
     // Заголовок секции
     sectionHeader: {
       color:             colors.textWeak,
@@ -162,11 +199,12 @@ function makeStyles(th: AppTheme, topInset = 0) {
 type RowProps = {
   item:     HistoryItem;
   currCode: string;
+  onPress:  () => void;
   onEdit?:  () => void;
   onDelete: () => void;
 };
 
-function HistoryRow({ item, currCode, onEdit, onDelete }: RowProps) {
+function HistoryRow({ item, currCode, onPress, onEdit, onDelete }: RowProps) {
   const { t } = useTranslation();
   const th = useAppTheme();
   const { colors } = th;
@@ -276,7 +314,9 @@ function HistoryRow({ item, currCode, onEdit, onDelete }: RowProps) {
       overshootRight={false}
       friction={2}
     >
-      {content}
+      <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
+        {content}
+      </TouchableOpacity>
     </Swipeable>
   );
 }
@@ -298,6 +338,8 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
   const [services,   setServices]   = useState<ServiceRecord[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [filter,     setFilter]     = useState<FilterType>('all');
+  const [sort,       setSort]       = useState<SortState>({ field: 'date', dir: 'desc' });
+  const [detail,     setDetail]     = useState<HistoryItem | null>(null);
   const [loading,    setLoading]    = useState(true);
 
   const mounted = useRef(true);
@@ -369,15 +411,51 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
 
   const sections = useMemo<Section[]>(() => {
     const catMap = new Map(categories.map((c) => [c.id, c]));
+    // Расход с категорией «service» (key='service') относится к «Сервису».
+    const isServiceExpense = (e: Expense) => catMap.get(e.category_id)?.key === 'service';
+
     const all: HistoryItem[] = [];
 
-    if (filter === 'all' || filter === 'fuel')    fuels.forEach((f) => all.push({ kind: 'fuel', data: f }));
-    if (filter === 'all' || filter === 'expense') expenses.forEach((e) => all.push({ kind: 'expense', data: e, category: catMap.get(e.category_id) }));
-    if (filter === 'all' || filter === 'service') services.forEach((sv) => all.push({ kind: 'service', data: sv }));
+    // Заправки — только при «Все» и «Заправки».
+    if (filter === 'all' || filter === 'fuel') {
+      fuels.forEach((f) => all.push({ kind: 'fuel', data: f }));
+    }
 
+    // Расходы: «Расходы» = кроме service-категории; «Сервис» = только service-категория;
+    // «Все» = любые расходы.
+    expenses.forEach((e) => {
+      const isSvc = isServiceExpense(e);
+      const include =
+        filter === 'all' ||
+        (filter === 'expense' && !isSvc) ||
+        (filter === 'service' && isSvc);
+      if (include) all.push({ kind: 'expense', data: e, category: catMap.get(e.category_id) });
+    });
+
+    // Записи обслуживания — при «Все» и «Сервис».
+    if (filter === 'all' || filter === 'service') {
+      services.forEach((sv) => all.push({ kind: 'service', data: sv }));
+    }
+
+    // ── Сортировка по сумме: единый плоский список без разбивки по месяцам ──
+    if (sort.field === 'amount') {
+      all.sort((a, b) => {
+        const diff = itemAmount(a) - itemAmount(b);
+        if (diff !== 0) return sort.dir === 'asc' ? diff : -diff;
+        // Тай-брейк: новые сверху.
+        if (a.data.date !== b.data.date) return a.data.date < b.data.date ? 1 : -1;
+        return b.data.id - a.data.id;
+      });
+      return all.length ? [{ title: '', data: all }] : [];
+    }
+
+    // ── Сортировка по дате: группировка по месяцам ─────────────────────────
     all.sort((a, b) => {
-      if (a.data.date !== b.data.date) return a.data.date < b.data.date ? 1 : -1;
-      return b.data.id - a.data.id;
+      if (a.data.date !== b.data.date) {
+        const cmp = a.data.date < b.data.date ? -1 : 1;
+        return sort.dir === 'asc' ? cmp : -cmp;
+      }
+      return sort.dir === 'asc' ? a.data.id - b.data.id : b.data.id - a.data.id;
     });
 
     const grouped = new Map<string, HistoryItem[]>();
@@ -392,7 +470,16 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
       title: fmtMonthHeader(ym, locale),
       data:  items,
     }));
-  }, [fuels, expenses, services, categories, filter, locale]);
+  }, [fuels, expenses, services, categories, filter, sort, locale]);
+
+  // ── Переключение сортировки ─────────────────────────────────────────────
+  function toggleSort(field: SortField) {
+    setSort((prev) =>
+      prev.field === field
+        ? { field, dir: prev.dir === 'desc' ? 'asc' : 'desc' }
+        : { field, dir: 'desc' }
+    );
+  }
 
   // ── Фильтры ──────────────────────────────────────────────────────────────
 
@@ -410,6 +497,7 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
       <HistoryRow
         item={item}
         currCode={currCode}
+        onPress={() => setDetail(item)}
         onEdit={item.kind !== 'service' ? () => handleEdit(item) : undefined}
         onDelete={() => handleDelete(item)}
       />
@@ -450,6 +538,32 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Сортировка: по дате (новые/старые) и по сумме (больше/меньше) */}
+        <View style={s.sortRow}>
+          {(['date', 'amount'] as SortField[]).map((f) => {
+            const active = sort.field === f;
+            return (
+              <TouchableOpacity
+                key={f}
+                style={[s.sortPill, active && s.sortPillActive]}
+                onPress={() => toggleSort(f)}
+                activeOpacity={0.7}
+              >
+                <Text style={[s.sortPillText, active && s.sortPillTextActive]}>
+                  {f === 'date' ? t('history.sortDate') : t('history.sortAmount')}
+                </Text>
+                {active && (
+                  <Ionicons
+                    name={sort.dir === 'desc' ? 'arrow-down' : 'arrow-up'}
+                    size={13}
+                    color={colors.accent}
+                  />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
     );
   }
@@ -472,14 +586,31 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
         sections={sections}
         keyExtractor={(item) => `${item.kind}-${item.data.id}`}
         renderItem={renderItem}
-        renderSectionHeader={({ section }) => (
-          <Text style={s.sectionHeader}>{section.title}</Text>
-        )}
+        renderSectionHeader={({ section }) =>
+          section.title ? <Text style={s.sectionHeader}>{section.title}</Text> : null
+        }
         ListHeaderComponent={<ListHeader />}
         ListEmptyComponent={<Text style={s.empty}>{t('history.empty')}</Text>}
         ItemSeparatorComponent={() => <View style={s.separator} />}
         stickySectionHeadersEnabled={false}
         contentContainerStyle={s.listContent}
+      />
+
+      {/* Модалка деталей записи (тап по строке) */}
+      <RecordDetailModal
+        record={detail}
+        currCode={currCode}
+        onClose={() => setDetail(null)}
+        onEdit={
+          detail && detail.kind !== 'service'
+            ? () => { const it = detail; setDetail(null); handleEdit(it); }
+            : undefined
+        }
+        onDelete={
+          detail
+            ? () => { const it = detail; setDetail(null); handleDelete(it); }
+            : undefined
+        }
       />
     </View>
   );

@@ -169,6 +169,22 @@ const ru = {
     filterFuel:    'Заправки',
     filterExpense: 'Расходы',
     filterService: 'Сервис',
+    sortDate:      'Дата',
+    sortAmount:    'Сумма',
+  },
+
+  // ── Детали записи (модалка) ──────────────────────────────────────────────
+  recordDetail: {
+    date:          'Дата',
+    odometer:      'Пробег',
+    liters:        'Литры',
+    total:         'Сумма',
+    pricePerLiter: 'Цена за литр',
+    fullTank:      'Полный бак',
+    consumption:   'Расход',
+    category:      'Категория',
+    description:   'Описание',
+    note:          'Заметка',
   },
 
   // ── Статистика (Этап 8) ──────────────────────────────────────────────────

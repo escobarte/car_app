@@ -35,6 +35,7 @@ import {
   Car, FuelEntry, Expense, ServiceRecord, Reminder, Category,
 } from '@/db';
 import MarkDoneSheet from '@/components/MarkDoneSheet';
+import RecordDetailModal from '@/components/RecordDetailModal';
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
@@ -132,6 +133,8 @@ export default function DashboardScreen() {
 
   // Bottom-sheet «Отметить выполнение»
   const [doneTarget,   setDoneTarget]   = useState<Reminder | null>(null);
+  // Модалка деталей транзакции (тап по строке «Последние транзакции»)
+  const [detail,       setDetail]       = useState<RecentItem | null>(null);
 
   // ── Загрузка ─────────────────────────────────────────────────────────────
 
@@ -416,10 +419,7 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   key={`${item.kind}-${item.data.id}`}
                   activeOpacity={0.7}
-                  onPress={() => {
-                    // TODO: открыть модалку деталей записи (общий компонент
-                    // с экраном История). Появится отдельной задачей — заглушка.
-                  }}
+                  onPress={() => setDetail(item)}
                   style={s.recentItem}
                 >
                   <View style={[s.recentIconWrap, { backgroundColor: d.iconBg }]}>
@@ -449,6 +449,13 @@ export default function DashboardScreen() {
         car={car}
         onClose={() => setDoneTarget(null)}
         onSaved={() => { loadData().catch(console.error); }}
+      />
+
+      {/* Модалка деталей транзакции — тап по строке «Последние транзакции» */}
+      <RecordDetailModal
+        record={detail}
+        currCode={currCode}
+        onClose={() => setDetail(null)}
       />
     </View>
   );
