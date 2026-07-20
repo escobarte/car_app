@@ -200,6 +200,7 @@ const ru = {
     categoryBreakdown: 'По категориям',
     shareByMonth:      'Доля трат по месяцам',
     trendVs:           '{{pct}}% к {{month}}',
+    kmPerMonth:        '{{km}} км за месяц',
     metricAvg:         'Средний расход',
     metricDistance:    'Пробег за период',
     metricMin:         'Минимум',

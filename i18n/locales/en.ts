@@ -180,6 +180,7 @@ const en: TranslationKeys = {
     categoryBreakdown: 'By category',
     shareByMonth:      'Share of spending by month',
     trendVs:           '{{pct}}% vs {{month}}',
+    kmPerMonth:        '{{km}} km this month',
     metricAvg:         'Avg. consumption',
     metricDistance:    'Distance for period',
     metricMin:         'Minimum',

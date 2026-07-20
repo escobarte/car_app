@@ -137,6 +137,18 @@ function aggExpenses(entries: Expense[], months: string[]): Record<string, numbe
   return r;
 }
 
+// Максимальный пробег среди заправок каждого месяца (для «км за месяц»).
+// Месяцы без заправок с пробегом в результат не попадают.
+function aggMaxOdo(fuel: FuelEntry[], months: string[]): Record<string, number> {
+  const r: Record<string, number> = {};
+  for (const f of fuel) {
+    const ym = f.date.slice(0, 7);
+    if (!months.includes(ym) || f.odometer <= 0) continue;
+    if (r[ym] === undefined || f.odometer > r[ym]) r[ym] = f.odometer;
+  }
+  return r;
+}
+
 function aggConsumption(fuel: FuelEntry[], months: string[]): Record<string, number> {
   const r = Object.fromEntries(months.map(m => [m, 0]));
   for (const ym of months) {
@@ -210,6 +222,7 @@ export default function StatsScreen() {
   const [fuelMap,   setFuelMap]   = useState<Record<string, number>>({});
   const [expMap,    setExpMap]    = useState<Record<string, number>>({});
   const [consMap,   setConsMap]   = useState<Record<string, number>>({});
+  const [maxOdoMap, setMaxOdoMap] = useState<Record<string, number>>({});
   const [consStats, setConsStats] = useState<ConsStats | null>(null);
   const [catStats,  setCatStats]  = useState<CatStat[]>([]);
   const [loading,   setLoading]   = useState(true);
@@ -231,6 +244,7 @@ export default function StatsScreen() {
         setFuelMap(aggFuel(fuel, MONTHS));
         setExpMap(aggExpenses(expenses, MONTHS));
         setConsMap(aggConsumption(fuel, MONTHS));
+        setMaxOdoMap(aggMaxOdo(fuel, MONTHS));
         setConsStats(buildConsStats(fuel, MONTHS));
         setCatStats(buildCatStats(expenses, cats, MONTHS));
         setLoading(false);
@@ -279,6 +293,19 @@ export default function StatsScreen() {
   const trendDown = selectedValue < prevValue;
   const trendPct  = showTrend ? Math.round((Math.abs(selectedValue - prevValue) / prevValue) * 100) : 0;
   const trendClr  = trendDown ? colors.statusOk : colors.statusDue;
+
+  // ── Пробег за выбранный месяц (только «Топливо») ────────────────────────────
+  // км = maxOdo(этот месяц) − maxOdo(предыдущий месяц набора). Прячем, если:
+  // первый месяц набора; нет заправок с пробегом в этом/предыдущем месяце;
+  // либо разница ≤ 0 (данные без роста пробега).
+  const monthKm = ((): number | null => {
+    if (activeTab !== 'fuel' || selIdx <= 0) return null;
+    const cur  = maxOdoMap[selectedYM];
+    const prev = maxOdoMap[MONTHS[selIdx - 1]];
+    if (cur === undefined || prev === undefined) return null;
+    const diff = cur - prev;
+    return diff > 0 ? diff : null;
+  })();
 
   // ── Загрузка ───────────────────────────────────────────────────────────────
   if (loading) {
@@ -349,6 +376,11 @@ export default function StatsScreen() {
                 {t('stats.trendVs', { pct: trendPct, month: prevMonthName(prevYM, locale) })}
               </Text>
             </View>
+          )}
+          {monthKm !== null && (
+            <Text style={s.monthKm}>
+              {t('stats.kmPerMonth', { km: monthKm.toLocaleString() })}
+            </Text>
           )}
         </View>
       </View>
@@ -622,6 +654,7 @@ function makeStyles(th: AppTheme, topInset: number) {
       borderRadius:      radius.badge,
     },
     trendText: { ...typography.labelSmall },
+    monthKm:   { color: colors.textMuted, ...typography.labelSmall, marginTop: 4 },
 
     // ── Метрики расхода 2×2 ───────────────────────────────────────────────────
     metricsGrid: {
