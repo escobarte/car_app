@@ -21,6 +21,10 @@ if (!IS_EXPO_GO) {
   setupNotificationHandler();
 }
 
+// 'clean' = чистая сборка без сид-данных; 'data' (по умолчанию) = с импортом
+const APP_VARIANT =
+  (Constants.expoConfig?.extra?.appVariant as string | undefined) ?? 'data';
+
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { getLocales } from 'expo-localization';
 import { Stack } from 'expo-router';
@@ -89,12 +93,12 @@ export default function RootLayout() {
         setInitDark(settings.theme !== 'light');
       }
 
-      const result = await importLegacyData();
-      setImportResult(result);
-
-      // Разовая миграция: пересчёт consumption по полной формуле §6.2
-      // для записей, сохранённых по старой упрощённой формуле. Идемпотентна.
-      await fuelRepo.recalcAllFullTankConsumption();
+      if (APP_VARIANT === 'data') {
+        const result = await importLegacyData();
+        setImportResult(result);
+        // Разовая идемпотентная миграция: пересчёт consumption по формуле §6.2
+        await fuelRepo.recalcAllFullTankConsumption();
+      }
 
       if (!IS_EXPO_GO) {
         try {
