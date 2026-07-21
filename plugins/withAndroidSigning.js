@@ -1,18 +1,18 @@
 /**
- * Config-plugin: добавляет release-подпись в android/app/build.gradle.
+ * Config-plugin: release-подпись + принудительный arm64-v8a ABI.
  *
- * Параметры подписи читаются из android/app/key.properties (создаётся вручную,
- * в .gitignore через правило /android).  Если файл отсутствует — signing-блок
- * остаётся пустым и Gradle использует debug-ключ (удобно при первом prebuild
- * до создания keystore).
+ * withAppBuildGradle — вшивает release-signing в android/app/build.gradle.
+ * withGradleProperties — выставляет reactNativeArchitectures=arm64-v8a,
+ *   перекрывая дефолтное значение RN-шаблона (все 4 архитектуры).
+ *   Это главный способ ограничить ABI в RN 0.76+; ndk.abiFilters в build.gradle
+ *   не перебивает это свойство.
  *
- * Плагин идемпотентен: маркер CAR_APP_SIGNING предотвращает двойной патч.
+ * Оба мода идемпотентны и применяются при каждом expo prebuild.
  */
-const { withAppBuildGradle } = require('@expo/config-plugins');
+const { withAppBuildGradle, withGradleProperties } = require('@expo/config-plugins');
 
 const MARKER = '// CAR_APP_SIGNING';
 
-// Groovy-блок, вставляемый внутрь signingConfigs { }
 const RELEASE_BLOCK = `
         ${MARKER}
         release {
@@ -27,20 +27,14 @@ const RELEASE_BLOCK = `
             }
         }`;
 
-module.exports = (config) =>
-  withAppBuildGradle(config, (config) => {
+function applySigningToBuildGradle(config) {
+  return withAppBuildGradle(config, (config) => {
     let src = config.modResults.contents;
-
-    // Уже патчили — ничего не делаем
     if (src.includes(MARKER)) return config;
 
-    // 1. Добавить release-блок в начало signingConfigs { }
     if (src.includes('signingConfigs')) {
       src = src.replace(/(\bsigningConfigs\s*\{)/, `$1${RELEASE_BLOCK}`);
     }
-
-    // 2. Добавить signingConfig signingConfigs.release перед minifyEnabled
-    //    (minifyEnabled есть только в release-buildType)
     src = src.replace(
       /^(\s+)(minifyEnabled\b)/m,
       '$1signingConfig signingConfigs.release\n$1$2',
@@ -49,3 +43,21 @@ module.exports = (config) =>
     config.modResults.contents = src;
     return config;
   });
+}
+
+function forceArm64Only(config) {
+  return withGradleProperties(config, (config) => {
+    // Удалить любое существующее значение (дефолт RN — все 4 архитектуры)
+    config.modResults = config.modResults.filter(
+      (item) => !(item.type === 'property' && item.key === 'reactNativeArchitectures'),
+    );
+    config.modResults.push({
+      type: 'property',
+      key: 'reactNativeArchitectures',
+      value: 'arm64-v8a',
+    });
+    return config;
+  });
+}
+
+module.exports = (config) => forceArm64Only(applySigningToBuildGradle(config));
