@@ -10,6 +10,7 @@ LogBox.ignoreLogs([
 ]);
 
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import {
   setupNotificationHandler,
   requestNotificationPermissions,
@@ -21,9 +22,16 @@ if (!IS_EXPO_GO) {
   setupNotificationHandler();
 }
 
-// 'clean' = чистая сборка без сид-данных; 'data' (по умолчанию) = с импортом
-const APP_VARIANT =
-  (Constants.expoConfig?.extra?.appVariant as string | undefined) ?? 'data';
+// Определяем вариант сборки двумя способами (belt-and-suspenders):
+// 1. Application.applicationId — читает фактический applicationId, заданный Gradle;
+//    100% надёжен в release-APK: com.escobarte.autoapp.clean → clean.
+// 2. Constants.expoConfig.extra.appVariant — запасной путь для dev-окружения,
+//    где applicationId может совпадать у обоих вариантов.
+const _appId     = Application.applicationId ?? '';
+const _fromNative = _appId.endsWith('.clean') ? 'clean' : null;
+const _fromConfig = Constants.expoConfig?.extra?.appVariant as string | undefined;
+const APP_VARIANT: 'clean' | 'data' =
+  (_fromNative ?? _fromConfig ?? 'data') === 'clean' ? 'clean' : 'data';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { getLocales } from 'expo-localization';
@@ -83,7 +91,7 @@ export default function RootLayout() {
       const deviceCode = getLocales()[0]?.languageCode ?? 'en';
       const deviceLang = isSupportedLanguage(deviceCode) ? deviceCode : 'en';
 
-      await initDatabase(deviceLang);
+      await initDatabase(deviceLang, APP_VARIANT === 'clean');
 
       const settings = await settingsRepo.getSettings();
       if (settings) {

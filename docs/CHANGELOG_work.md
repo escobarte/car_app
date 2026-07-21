@@ -9,10 +9,24 @@
 
 ---
 
+## 2026-07-21
+- Баг: clean-вариант стартовал с данными. Две причины: (1) initDatabase сеяла 4 регламента вне зависимости от варианта; (2) Constants.expoConfig.extra ненадёжен в локальном release-APK (может вернуть null → fallback 'data' → importLegacyData запускался). Исправлено: initDatabase принимает isClean=true/false и пропускает REMINDER_SEEDS для clean; APP_VARIANT теперь читается из Application.applicationId (нативный Gradle-baked applicationId, 100% надёжен в release) с fallback на Constants.expoConfig.extra для dev-режима.
+- файлы: db/database.ts, app/_layout.tsx
+- статус: ждёт проверки на телефоне
+
+---
+
+## 2026-07-21
+- Исправлена ошибка сборки clean-варианта ("cannot find symbol: class BuildConfig"): android.package теперь одинаков для обоих вариантов (com.escobarte.autoapp), что сохраняет namespace и правильное расположение BuildConfig. Суффикс .clean добавляется в applicationIdSuffix через плагин — applicationId на устройстве остаётся com.escobarte.autoapp.clean. Также закреплено reactNativeArchitectures=arm64-v8a через withGradleProperties в том же плагине.
+- файлы: app.config.js, plugins/withAndroidSigning.js
+- статус: проверено
+
+---
+
 ## 2026-07-20
 - Настройка локальной сборки двух Android APK (data / clean), устанавливаемых одновременно. Создан динамический app.config.js (заменяет статичный app.json): по переменной окружения APP_VARIANT выбираются applicationId, имя и иконки. Плагин plugins/withAndroidSigning.js вшивает release-подпись (из android/app/key.properties) в build.gradle при каждом prebuild — автоматически, без ручных правок. Добавлен expo-build-properties с arm64-v8a-only ABI, R8, shrinkResources, minSdk 29 (→ APK 25–45 МБ вместо 300). В _layout.tsx bootstrap-импорт (legacy data + recalc) вызывается только при variant=data; вариант clean стартует с пустой базой.
 - файлы: app.config.js (новый), plugins/withAndroidSigning.js (новый), app/_layout.tsx
-- статус: ждёт проверки на телефоне
+- статус: проверено
 
 ---
 

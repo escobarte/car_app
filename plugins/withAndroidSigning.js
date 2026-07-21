@@ -60,4 +60,25 @@ function forceArm64Only(config) {
   });
 }
 
-module.exports = (config) => forceArm64Only(applySigningToBuildGradle(config));
+/**
+ * Для clean-варианта добавляет applicationIdSuffix ".clean" в defaultConfig.
+ * namespace (android.package) остаётся базовым com.escobarte.autoapp —
+ * именно по нему генерируется BuildConfig и работает автолинкинг.
+ */
+function applyCleanSuffix(config) {
+  if (process.env.APP_VARIANT !== 'clean') return config;
+  return withAppBuildGradle(config, (config) => {
+    let src = config.modResults.contents;
+    if (src.includes('applicationIdSuffix')) return config; // уже патчили
+    // Groovy допускает и одинарные, и двойные кавычки; шаблон Expo использует одинарные
+    src = src.replace(
+      /^(\s+)(applicationId\s+['"][^'"]+['"])$/m,
+      '$1$2\n$1applicationIdSuffix \'.clean\'',
+    );
+    config.modResults.contents = src;
+    return config;
+  });
+}
+
+module.exports = (config) =>
+  applyCleanSuffix(forceArm64Only(applySigningToBuildGradle(config)));

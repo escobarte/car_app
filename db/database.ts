@@ -128,7 +128,7 @@ export async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
  *   Используется только при ПЕРВОМ запуске для записи в APP_SETTINGS.
  *   На последующих запусках INSERT OR IGNORE эту строку пропускает.
  */
-export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru'): Promise<void> {
+export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru', isClean = false): Promise<void> {
   const db = await openDatabase();
 
   // 1. Создаём все таблицы
@@ -159,14 +159,16 @@ export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru'): Promise<
     );
   }
 
-  // 5. Стартовые регламенты (привязаны к машине id=1)
-  for (const r of REMINDER_SEEDS) {
-    await db.runAsync(
-      `INSERT OR IGNORE INTO reminder
-         (car_id, title, type, interval_km, interval_days, last_odometer, last_date, warn_before)
-       SELECT 1, ?, ?, ?, ?, 0, date('now'), ?
-       WHERE NOT EXISTS (SELECT 1 FROM reminder WHERE car_id = 1 AND title = ?);`,
-      r.title, r.type, r.interval_km, r.interval_days, r.warn_before, r.title
-    );
+  // 5. Стартовые регламенты — только для варианта data; clean стартует пустым
+  if (!isClean) {
+    for (const r of REMINDER_SEEDS) {
+      await db.runAsync(
+        `INSERT OR IGNORE INTO reminder
+           (car_id, title, type, interval_km, interval_days, last_odometer, last_date, warn_before)
+         SELECT 1, ?, ?, ?, ?, 0, date('now'), ?
+         WHERE NOT EXISTS (SELECT 1 FROM reminder WHERE car_id = 1 AND title = ?);`,
+        r.title, r.type, r.interval_km, r.interval_days, r.warn_before, r.title
+      );
+    }
   }
 }

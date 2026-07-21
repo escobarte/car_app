@@ -16,10 +16,9 @@ module.exports = {
   },
 
   android: {
-    // Поменяй на свои applicationId если нужно (они должны быть уникальными)
-    package: IS_CLEAN
-      ? 'com.escobarte.autoapp.clean'
-      : 'com.escobarte.autoapp',
+    // namespace и базовый applicationId — одинаковые для обоих вариантов.
+    // Суффикс .clean добавляется плагином withAndroidSigning через applicationIdSuffix.
+    package: 'com.escobarte.autoapp',
     adaptiveIcon: {
       foregroundImage: IS_CLEAN
         ? './assets/icon-clean-foreground.png'
