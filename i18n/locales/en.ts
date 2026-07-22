@@ -204,6 +204,7 @@ const en: TranslationKeys = {
     exportData:          'Export data',
     importData:          'Import data',
     categories:          'Expense categories',
+    appVersion:          'v{{v}}',
   },
 
   notifications: {
@@ -219,6 +220,7 @@ const en: TranslationKeys = {
 
   backup: {
     exportSuccess:       'Backup file created',
+    exportSavedSAF:      'File «{{name}}» saved to selected folder',
     exportError:         'Failed to create backup',
     importConfirmTitle:  'Restore data?',
     importConfirmMsg:    'This will overwrite ALL current app data. Continue?',

@@ -10,6 +10,13 @@
 ---
 
 ## 2026-07-22
+- Экспорт/импорт/DEBUG: (1) Экспорт — SAF на Android (выбор папки, сохранение файла с именем car_backup_YYYY-MM-DD_HHmm.json, Alert с именем файла); fallback на expo-sharing при отказе или на iOS. (2) Импорт — тип только application/json+*/*, добавлена валидация структуры JSON (5 обязательных массивов + version:1). (3) DEBUG-секция спрятана: открывается 7 тапами по номеру версии внизу Настроек (v1.0.0), состояние сбрасывается при перезапуске.
+- файлы: db/backup.ts, app/settings.tsx, i18n/locales/ru.ts, i18n/locales/en.ts
+- статус: ждёт проверки на телефоне
+
+---
+
+## 2026-07-22
 - Временная debug-кнопка «Тест уведомления через 30 сек» в нижней секции DEBUG экрана Настройки. Запрашивает разрешение, создаёт Android-канал 'car-app-debug' с importance MAX, планирует уведомление через 30 сек (TIME_INTERVAL, repeats:false), показывает Alert «Запланировано, сверни приложение». В app.config.js добавлен плагин expo-notifications (POST_NOTIFICATIONS для Android 13+) — нужна пересборка APK. Все тексты через t(), цвета через statusDue темы.
 - файлы: app/settings.tsx, app.config.js, i18n/locales/ru.ts, i18n/locales/en.ts
 - статус: ждёт проверки на телефоне

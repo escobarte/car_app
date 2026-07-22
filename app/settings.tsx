@@ -18,6 +18,7 @@ import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme, useThemeCtx } from '@/contexts/theme-context';
@@ -103,6 +104,8 @@ export default function SettingsScreen() {
   const [language,     setLanguage]     = useState<'ru' | 'en'>('ru');
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [backupState,  setBackupState]  = useState<'idle' | 'working' | 'done' | 'error'>('idle');
+  const [debugVisible,    setDebugVisible]    = useState(false);
+  const [versionTapCount, setVersionTapCount] = useState(0);
 
   const loadData = useCallback(async () => {
     const [car, settings] = await Promise.all([carRepo.getCar(), settingsRepo.getSettings()]);
@@ -125,7 +128,10 @@ export default function SettingsScreen() {
   async function handleExport() {
     setBackupState('working');
     try {
-      await exportDatabase();
+      const savedFileName = await exportDatabase();
+      if (savedFileName) {
+        Alert.alert(t('backup.exportSuccess'), t('backup.exportSavedSAF', { name: savedFileName }));
+      }
       setBackupState('idle');
     } catch (e) {
       Alert.alert(t('backup.exportError'), String(e));
@@ -168,7 +174,17 @@ export default function SettingsScreen() {
     );
   }
 
-  const langLabel = language === 'ru' ? 'RU' : 'EN';
+  const langLabel   = language === 'ru' ? 'RU' : 'EN';
+  const appVersion  = Constants.expoConfig?.version ?? '1.0.0';
+
+  function handleVersionTap() {
+    const next = versionTapCount + 1;
+    setVersionTapCount(next);
+    if (next >= 7) {
+      setDebugVisible(true);
+      setVersionTapCount(0);
+    }
+  }
 
   // TEMP: удалить после проверки push ────────────────────────────────────────
   async function handleTestNotification() {
@@ -265,14 +281,24 @@ export default function SettingsScreen() {
           <NavRow label={t('settings.importData')} onPress={handleImport} isLast colors={colors} radius={radius} />
         </View>
 
-        {/* TEMP: удалить после проверки push ─────────────────────────────── */}
-        <SectionHeader label={t('debug.sectionTitle')} colors={{ ...colors, textWeak: colors.statusDue.text }} />
-        <View style={s.card}>
-          <TouchableOpacity style={[s.debugBtn, { backgroundColor: colors.statusDue.background }]} activeOpacity={0.7} onPress={handleTestNotification}>
-            <Text style={[s.debugBtnText, { color: colors.statusDue.text }]}>{t('debug.testNotifBtn')}</Text>
-          </TouchableOpacity>
-        </View>
-        {/* ── конец TEMP ─────────────────────────────────────────────────── */}
+        {/* DEBUG-секция — скрыта, открывается 7 тапами по версии ─────────── */}
+        {debugVisible && (
+          <>
+            <SectionHeader label={t('debug.sectionTitle')} colors={{ ...colors, textWeak: colors.statusDue.text }} />
+            <View style={s.card}>
+              <TouchableOpacity style={[s.debugBtn, { backgroundColor: colors.statusDue.background }]} activeOpacity={0.7} onPress={handleTestNotification}>
+                <Text style={[s.debugBtnText, { color: colors.statusDue.text }]}>{t('debug.testNotifBtn')}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {/* ── Версия приложения (7 тапов → DEBUG) ───────────────────────── */}
+        <TouchableOpacity onPress={handleVersionTap} activeOpacity={1} style={s.versionRow}>
+          <Text style={[s.versionText, { color: colors.textMuted }]}>
+            {t('settings.appVersion', { v: appVersion })}
+          </Text>
+        </TouchableOpacity>
 
         <View style={s.bottomPad} />
       </ScrollView>
@@ -297,8 +323,9 @@ function makeStyles(th: AppTheme) {
     scroll:        { flex: 1 },
     scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
     card: { backgroundColor: colors.surface, borderRadius: radius.card, overflow: 'hidden' },
-    bottomPad: { height: 40 },
-    // TEMP: удалить после проверки push
+    bottomPad:   { height: 40 },
+    versionRow:  { alignItems: 'center', paddingVertical: 12 },
+    versionText: { fontSize: 13, fontWeight: '400' as const },
     debugBtn:     { paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center' },
     debugBtnText: { ...typography.cardText, fontWeight: '500' as const },
   });
