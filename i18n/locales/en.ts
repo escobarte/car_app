@@ -260,6 +260,15 @@ const en: TranslationKeys = {
     en:    'English',
   },
 
+  debug: {
+    sectionTitle:   'DEBUG',
+    testNotifBtn:   'Test notification in 30 sec',
+    notifScheduled: 'Scheduled, minimize the app',
+    notifDenied:    'Notification permission denied',
+    testNotifTitle: 'Notification test',
+    testNotifBody:  'If you see this — push works!',
+  },
+
   dbCheck: {
     title:             '🗄 Database Check',
     sectionCar:        'CAR',

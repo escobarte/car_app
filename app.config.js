@@ -50,6 +50,15 @@ module.exports = {
     'expo-localization',
     '@react-native-community/datetimepicker',
     [
+      'expo-notifications',
+      {
+        // Добавляет POST_NOTIFICATIONS (Android 13+) и RECEIVE_BOOT_COMPLETED
+        // в AndroidManifest автоматически.
+        iosDisplayInForeground: true,
+        androidMode: 'default',
+      },
+    ],
+    [
       'expo-build-properties',
       {
         android: {

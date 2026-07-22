@@ -9,6 +9,13 @@
 
 ---
 
+## 2026-07-22
+- Временная debug-кнопка «Тест уведомления через 30 сек» в нижней секции DEBUG экрана Настройки. Запрашивает разрешение, создаёт Android-канал 'car-app-debug' с importance MAX, планирует уведомление через 30 сек (TIME_INTERVAL, repeats:false), показывает Alert «Запланировано, сверни приложение». В app.config.js добавлен плагин expo-notifications (POST_NOTIFICATIONS для Android 13+) — нужна пересборка APK. Все тексты через t(), цвета через statusDue темы.
+- файлы: app/settings.tsx, app.config.js, i18n/locales/ru.ts, i18n/locales/en.ts
+- статус: ждёт проверки на телефоне
+
+---
+
 ## 2026-07-21
 - Баг: clean-вариант стартовал с данными. Две причины: (1) initDatabase сеяла 4 регламента вне зависимости от варианта; (2) Constants.expoConfig.extra ненадёжен в локальном release-APK (может вернуть null → fallback 'data' → importLegacyData запускался). Исправлено: initDatabase принимает isClean=true/false и пропускает REMINDER_SEEDS для clean; APP_VARIANT теперь читается из Application.applicationId (нативный Gradle-baked applicationId, 100% надёжен в release) с fallback на Constants.expoConfig.extra для dev-режима.
 - файлы: db/database.ts, app/_layout.tsx

@@ -6,6 +6,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -169,6 +170,42 @@ export default function SettingsScreen() {
 
   const langLabel = language === 'ru' ? 'RU' : 'EN';
 
+  // TEMP: удалить после проверки push ────────────────────────────────────────
+  async function handleTestNotification() {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const N = require('expo-notifications') as typeof import('expo-notifications');
+
+      const { status } = await N.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(t('debug.notifDenied'));
+        return;
+      }
+
+      if (Platform.OS === 'android') {
+        await N.setNotificationChannelAsync('car-app-debug', {
+          name:       t('debug.sectionTitle'),
+          importance: N.AndroidImportance.MAX,
+        });
+      }
+
+      await N.scheduleNotificationAsync({
+        content: { title: t('debug.testNotifTitle'), body: t('debug.testNotifBody') },
+        trigger: {
+          type:      N.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          channelId: 'car-app-debug',
+          seconds:   30,
+          repeats:   false,
+        },
+      });
+
+      Alert.alert(t('debug.notifScheduled'));
+    } catch (e) {
+      Alert.alert(t('common.error'), String(e));
+    }
+  }
+  // ── конец TEMP ──────────────────────────────────────────────────────────────
+
   return (
     <View style={s.screen}>
       {/* ── Шапка ──────────────────────────────────────────────────────── */}
@@ -228,6 +265,15 @@ export default function SettingsScreen() {
           <NavRow label={t('settings.importData')} onPress={handleImport} isLast colors={colors} radius={radius} />
         </View>
 
+        {/* TEMP: удалить после проверки push ─────────────────────────────── */}
+        <SectionHeader label={t('debug.sectionTitle')} colors={{ ...colors, textWeak: colors.statusDue.text }} />
+        <View style={s.card}>
+          <TouchableOpacity style={[s.debugBtn, { backgroundColor: colors.statusDue.background }]} activeOpacity={0.7} onPress={handleTestNotification}>
+            <Text style={[s.debugBtnText, { color: colors.statusDue.text }]}>{t('debug.testNotifBtn')}</Text>
+          </TouchableOpacity>
+        </View>
+        {/* ── конец TEMP ─────────────────────────────────────────────────── */}
+
         <View style={s.bottomPad} />
       </ScrollView>
     </View>
@@ -252,5 +298,8 @@ function makeStyles(th: AppTheme) {
     scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
     card: { backgroundColor: colors.surface, borderRadius: radius.card, overflow: 'hidden' },
     bottomPad: { height: 40 },
+    // TEMP: удалить после проверки push
+    debugBtn:     { paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center' },
+    debugBtnText: { ...typography.cardText, fontWeight: '500' as const },
   });
 }
