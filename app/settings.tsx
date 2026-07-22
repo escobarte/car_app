@@ -161,10 +161,20 @@ export default function SettingsScreen() {
               );
               await loadData();
               setBackupState('idle');
-            } else if (result.error === 'cancelled') {
+            } else if (result.code === 'cancelled') {
               setBackupState('idle');
+            } else if (result.code === 'invalid_file') {
+              Alert.alert(
+                t('backup.importError'),
+                t('backup.importErrorInvalidFile') + (result.detail ? `\n\n${result.detail}` : ''),
+              );
+              setBackupState('error');
+              setTimeout(() => setBackupState('idle'), 2000);
             } else {
-              Alert.alert(t('backup.importError'), result.error);
+              Alert.alert(
+                t('backup.importError'),
+                t('backup.importErrorRestoreFailed') + (result.detail ? `\n\n${result.detail}` : ''),
+              );
               setBackupState('error');
               setTimeout(() => setBackupState('idle'), 2000);
             }

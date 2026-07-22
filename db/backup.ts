@@ -7,10 +7,10 @@
  *     fuelEntries, expenses, serviceRecords }
  */
 
-import { Platform }         from 'react-native';
-import * as FileSystem      from 'expo-file-system/legacy';
-import * as Sharing         from 'expo-sharing';
-import * as DocumentPicker  from 'expo-document-picker';
+import { Platform }        from 'react-native';
+import * as FileSystem     from 'expo-file-system/legacy';
+import * as Sharing        from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 
 import { openDatabase, Car, FuelEntry, Expense, Category, ServiceRecord, Reminder, AppSettings } from './database';
 
@@ -30,7 +30,7 @@ export type BackupData = {
 
 export type ImportResult =
   | { ok: true;  counts: { fuel: number; expense: number; service: number; reminder: number; category: number } }
-  | { ok: false; error: string };
+  | { ok: false; code: 'cancelled' | 'invalid_file' | 'restore_failed'; detail?: string };
 
 // ─── Экспорт ─────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,9 @@ export type ImportResult =
  * Собирает все данные из БД и сохраняет JSON.
  *
  * Android: открывает SAF-диалог выбора папки → сохраняет файл туда.
- * Fallback (SAF отклонён или iOS): открывает Share-диалог.
+ * Если SAF не поддерживается провайдером (Google Drive и др.) — автоматически
+ * переходит на fallback sharing.
+ * Fallback (SAF отклонён / ошибка / iOS): открывает Share-диалог.
  *
  * Возвращает имя файла при SAF-сохранении (нужен Alert на вызывающей стороне),
  * или null если использовался sharing (диалог сам является подтверждением).
@@ -74,20 +76,25 @@ export async function exportDatabase(): Promise<string | null> {
   if (Platform.OS === 'android') {
     const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
     if (perm.granted) {
-      const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        perm.directoryUri,
-        fileName,
-        'application/json',
-      );
-      await FileSystem.writeAsStringAsync(fileUri, content, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      return fileName;
+      try {
+        const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          perm.directoryUri,
+          fileName,
+          'application/json',
+        );
+        await FileSystem.writeAsStringAsync(fileUri, content, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        return fileName;
+      } catch {
+        // Провайдер не поддерживает запись через SAF (например, Google Drive).
+        // Автоматически переходим на sharing — ошибку не показываем.
+      }
     }
-    // Пользователь отклонил выбор папки → переходим к sharing
+    // Папка не выбрана или SAF-запись не поддерживается → sharing
   }
 
-  // ── Fallback: sharing (iOS или SAF отклонён) ────────────────────────────────
+  // ── Fallback: sharing (iOS, SAF отклонён или недоступен) ───────────────────
   const tempUri = (FileSystem.cacheDirectory ?? '') + fileName;
   await FileSystem.writeAsStringAsync(tempUri, content, {
     encoding: FileSystem.EncodingType.UTF8,
@@ -110,6 +117,7 @@ export async function exportDatabase(): Promise<string | null> {
 /**
  * Открывает file picker, читает JSON, валидирует структуру и заливает данные в БД.
  * Возвращает ImportResult.
+ * При ошибке внутри транзакции withExclusiveTransactionAsync автоматически откатывает изменения.
  */
 export async function importDatabase(): Promise<ImportResult> {
   // 1. Выбрать файл
@@ -119,7 +127,7 @@ export async function importDatabase(): Promise<ImportResult> {
   });
 
   if (picked.canceled || picked.assets.length === 0) {
-    return { ok: false, error: 'cancelled' };
+    return { ok: false, code: 'cancelled' };
   }
 
   const fileUri = picked.assets[0].uri;
@@ -141,10 +149,10 @@ export async function importDatabase(): Promise<ImportResult> {
 
     backup = parsed;
   } catch (e) {
-    return { ok: false, error: `Не удалось прочитать файл: ${String(e)}` };
+    return { ok: false, code: 'invalid_file', detail: String(e) };
   }
 
-  // 3. Восстановить данные в транзакции (откат при любой ошибке)
+  // 3. Восстановить данные в транзакции (withExclusiveTransactionAsync откатывает при throw)
   const db = await openDatabase();
 
   try {
@@ -227,17 +235,23 @@ export async function importDatabase(): Promise<ImportResult> {
         );
       }
 
-      // Сбрасываем auto-increment последовательности
-      await txn.execAsync(`
-        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM category)       WHERE name='category';
-        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM reminder)       WHERE name='reminder';
-        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM fuel_entry)     WHERE name='fuel_entry';
-        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM expense)        WHERE name='expense';
-        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM service_record) WHERE name='service_record';
-      `);
+      // Сбрасываем auto-increment, но только если таблица sqlite_sequence существует.
+      // В чистой БД (без AUTOINCREMENT-вставок) она может отсутствовать.
+      const hasSeqTable = await txn.getFirstAsync<{ name: string }>(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence';`,
+      );
+      if (hasSeqTable) {
+        await txn.execAsync(`
+          UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM category)       WHERE name='category';
+          UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM reminder)       WHERE name='reminder';
+          UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM fuel_entry)     WHERE name='fuel_entry';
+          UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM expense)        WHERE name='expense';
+          UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM service_record) WHERE name='service_record';
+        `);
+      }
     });
   } catch (e) {
-    return { ok: false, error: `Ошибка при восстановлении: ${String(e)}` };
+    return { ok: false, code: 'restore_failed', detail: String(e) };
   }
 
   return {

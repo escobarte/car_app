@@ -10,6 +10,13 @@
 ---
 
 ## 2026-07-22
+- Исправлены два бага экспорта/импорта: (1) Импорт падал с "no such table: sqlite_sequence" — перед UPDATE sqlite_sequence теперь проверяется наличие таблицы через sqlite_master внутри той же транзакции; (2) Экспорт через SAF на Google Drive падал с "isn't writable" — createFileAsync/writeAsStringAsync обёрнуты в try/catch, при ошибке автоматически fallback на expo-sharing. Ошибки импорта теперь через t() (invalid_file / restore_failed), сырой текст исключения добавляется второй строкой.
+- файлы: db/backup.ts, app/settings.tsx, i18n/locales/ru.ts, i18n/locales/en.ts
+- статус: ждёт проверки на телефоне
+
+---
+
+## 2026-07-22
 - Экспорт: переработан на SAF (Android) — юзер выбирает папку, файл сохраняется туда с именем car_backup_YYYY-MM-DD_HHmm.json, после чего Alert с именем файла. Fallback на expo-sharing при отказе от выбора папки. Импорт: type изменён на ['application/json','*/*'], добавлена валидация структуры JSON (5 обязательных массивов + version:1) — при ошибке база не трогается. Новых пакетов нет, prebuild не нужен.
 - файлы: db/backup.ts, app/settings.tsx, i18n/locales/ru.ts, i18n/locales/en.ts
 - статус: ждёт проверки на телефоне
