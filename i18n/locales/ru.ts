@@ -290,6 +290,33 @@ const ru = {
     en:    'English',
   },
 
+  // ── Модалки дашборда ─────────────────────────────────────────────────────
+  dashModal: {
+    noData:           '—',
+    // Разбивка расходов за месяц
+    breakdownTitle:   'Расходы за месяц',
+    breakdownFuel:    'Топливо',
+    breakdownExp:     'Прочие расходы',
+    breakdownSvc:     'Сервис',
+    breakdownTotal:   'Итого',
+    breakdownToStats: 'Открыть статистику',
+    // Детали цены
+    priceTitle:       'Цена за литр',
+    priceAvg3m:       'Средняя (3 мес.)',
+    priceMin:         'Минимум (3 мес.)',
+    priceMax:         'Максимум (3 мес.)',
+    priceLastFill:    'Последняя заправка',
+    priceTrend:       'К прошлому месяцу',
+    // Детали расхода топлива
+    consTitle:        'Расход топлива',
+    consBest:         'Лучший показатель',
+    consWorst:        'Худший показатель',
+    consTrend:        'К прошлому месяцу',
+    consLast5:        'Последние 5 полных баков',
+    consBadgeBest:    'лучший',
+    consBadgeWorst:   'худший',
+  },
+
   // ── Временная отладка уведомлений (TEMP: удалить после проверки) ────────
   debug: {
     sectionTitle:   'DEBUG',

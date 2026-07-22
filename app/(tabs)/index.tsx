@@ -15,6 +15,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -36,6 +37,7 @@ import {
 } from '@/db';
 import MarkDoneSheet from '@/components/MarkDoneSheet';
 import RecordDetailModal from '@/components/RecordDetailModal';
+import DashStatModal, { StatRow, StatItem } from '@/components/DashStatModal';
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
@@ -136,6 +138,19 @@ export default function DashboardScreen() {
   // Модалка деталей транзакции (тап по строке «Последние транзакции»)
   const [detail,       setDetail]       = useState<RecentItem | null>(null);
 
+  // Стат-модалки карточек дашборда
+  const [showMonthModal, setShowMonthModal] = useState(false);
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [showConsModal,  setShowConsModal]  = useState(false);
+
+  type MonthBreakdown = { fuel: number; expense: number; service: number };
+  type PriceDetail    = { avg3m: number | null; min: number | null; max: number | null; lastDate: string | null; trend: number | null };
+  type ConsDetail     = { last5: Array<{ date: string; cons: number }>; best: number | null; worst: number | null; trend: number | null };
+
+  const [monthBreakdown, setMonthBreakdown] = useState<MonthBreakdown | null>(null);
+  const [priceDetail,    setPriceDetail]    = useState<PriceDetail | null>(null);
+  const [consDetail,     setConsDetail]     = useState<ConsDetail | null>(null);
+
   // ── Загрузка ─────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
@@ -185,6 +200,46 @@ export default function DashboardScreen() {
       if (a.data.date !== b.data.date) return a.data.date < b.data.date ? 1 : -1;
       return b.data.id - a.data.id;
     });
+
+    // ── Данные для стат-модалок ──────────────────────────────────────────
+    const [curYear, curMonth] = ym.split('-').map(Number);
+    const prevYM = curMonth === 1
+      ? `${curYear - 1}-12`
+      : `${curYear}-${String(curMonth - 1).padStart(2, '0')}`;
+
+    // Разбивка за месяц
+    const fuelTotal = sum(fuelMonth.map((f) => f.total_cost));
+    const expTotal  = sum(expMonth.map((e)  => e.amount));
+    const svcTotal  = sum(svcMonth.map((sv) => sv.cost));
+    setMonthBreakdown({ fuel: fuelTotal, expense: expTotal, service: svcTotal });
+
+    // Детали цены — последние 3 месяца
+    const threeMonthsStart = new Date(curYear, curMonth - 3, 1);
+    const prices3m = allFuel
+      .filter((f) => new Date(f.date + 'T00:00:00') >= threeMonthsStart && f.price_per_liter > 0)
+      .map((f) => f.price_per_liter);
+    const prevPrices = allFuel.filter((f) => f.date.startsWith(prevYM) && f.price_per_liter > 0).map((f) => f.price_per_liter);
+    const curPrices  = fuelMonth.filter((f) => f.price_per_liter > 0).map((f) => f.price_per_liter);
+    const avgP3m   = avg(prices3m);
+    const minP3m   = prices3m.length > 0 ? Math.min(...prices3m) : null;
+    const maxP3m   = prices3m.length > 0 ? Math.max(...prices3m) : null;
+    const prevAvgP = avg(prevPrices);
+    const curAvgP  = avg(curPrices);
+    const priceTrend = prevAvgP != null && curAvgP != null
+      ? Math.round(((curAvgP - prevAvgP) / prevAvgP) * 100) : null;
+    setPriceDetail({ avg3m: avgP3m, min: minP3m, max: maxP3m, lastDate: allFuel[0]?.date ?? null, trend: priceTrend });
+
+    // Детали расхода топлива
+    const fullTanksAll = allFuel.filter((f) => f.is_full_tank === 1 && f.consumption != null);
+    const last5 = fullTanksAll.slice(0, 5).map((f) => ({ date: f.date, cons: f.consumption! }));
+    const allConsVals = fullTanksAll.map((f) => f.consumption!);
+    const bestCons    = allConsVals.length > 0 ? Math.min(...allConsVals) : null;
+    const worstCons   = allConsVals.length > 0 ? Math.max(...allConsVals) : null;
+    const prevAvgCons = avg(fullTanksAll.filter((f) => f.date.startsWith(prevYM)).map((f) => f.consumption!));
+    const curAvgCons  = avg(fullTanksAll.filter((f) => f.date.startsWith(ym)).map((f) => f.consumption!));
+    const consTrend   = prevAvgCons != null && curAvgCons != null
+      ? Math.round(((curAvgCons - prevAvgCons) / prevAvgCons) * 100) : null;
+    setConsDetail({ last5, best: bestCons, worst: worstCons, trend: consTrend });
 
     setCar(carData);
     setMonthlyTotal(total);
@@ -258,6 +313,48 @@ export default function DashboardScreen() {
       : t('service.remainingDays', { n });
   }
 
+  // ── Edit / Delete транзакций ─────────────────────────────────────────────
+
+  function handleDetailEdit() {
+    if (!detail) return;
+    const target = detail;
+    setDetail(null);
+    if (target.kind === 'fuel')    router.push(`/add-fuel?editId=${target.data.id}` as never);
+    if (target.kind === 'expense') router.push(`/add-expense?editId=${target.data.id}` as never);
+  }
+
+  function handleDetailDelete() {
+    if (!detail) return;
+    const target = detail;
+    Alert.alert(
+      t('historyActions.deleteTitle'),
+      t('historyActions.deleteMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text:  t('historyActions.deleteConfirm'),
+          style: 'destructive',
+          onPress: async () => {
+            setDetail(null);
+            if (target.kind === 'fuel')    await fuelRepo.deleteFuelEntry(target.data.id);
+            if (target.kind === 'expense') await expenseRepo.deleteExpense(target.data.id);
+            if (target.kind === 'service') await serviceRepo.deleteServiceRecord(target.data.id);
+            loadData().catch(console.error);
+          },
+        },
+      ],
+    );
+  }
+
+  // Форматирование тренда: положительный % = хуже (красный), отрицательный = лучше (зелёный)
+  function fmtTrend(pct: number | null): { text: string; color: string } {
+    if (pct == null) return { text: t('dashModal.noData'), color: colors.textMuted };
+    const sign = pct > 0 ? '+' : '';
+    const text  = `${sign}${pct}%`;
+    const color = pct === 0 ? colors.textMuted : pct > 0 ? colors.statusDue.text : colors.statusOk.text;
+    return { text, color };
+  }
+
   // ── Загрузка ─────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -296,33 +393,44 @@ export default function DashboardScreen() {
       </View>
 
       {/* ── 2. Градиентный блок суммы ─────────────────────────────────── */}
-      <LinearGradient
-        colors={gradient.accent.colors}
-        start={gradient.accent.start}
-        end={gradient.accent.end}
-        style={s.totalBlock}
-      >
-        <Text style={s.totalLabel}>{t('dashboard.thisMonth')}</Text>
-        <Text style={s.totalAmount}>{formatMoney(monthlyTotal, currCode)}</Text>
-      </LinearGradient>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => setShowMonthModal(true)}>
+        <LinearGradient
+          colors={gradient.accent.colors}
+          start={gradient.accent.start}
+          end={gradient.accent.end}
+          style={s.totalBlock}
+        >
+          <Text style={s.totalLabel}>{t('dashboard.thisMonth')}</Text>
+          <Text style={s.totalAmount}>{formatMoney(monthlyTotal, currCode)}</Text>
+          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.55)" style={{ marginTop: 6 }} />
+        </LinearGradient>
+      </TouchableOpacity>
 
       {/* ── 3. Карточки статистики ─────────────────────────────────────── */}
       <View style={s.statsRow}>
-        <View style={[s.statCard, { marginRight: 8 }]}>
+        <TouchableOpacity
+          style={[s.statCard, { marginRight: 8 }]}
+          activeOpacity={0.75}
+          onPress={() => setShowPriceModal(true)}
+        >
           <Text style={s.statTitle}>{t('dashboard.avgFuelPrice')}</Text>
           <Text style={s.statValue}>
             {avgPrice != null ? formatMoney(avgPrice, currCode) : '—'}
           </Text>
           <Text style={s.statSub}>{t('dashboard.perLiter')}</Text>
-        </View>
+        </TouchableOpacity>
 
-        <View style={s.statCard}>
+        <TouchableOpacity
+          style={s.statCard}
+          activeOpacity={0.75}
+          onPress={() => setShowConsModal(true)}
+        >
           <Text style={s.statTitle}>{t('dashboard.avgConsumption')}</Text>
           <Text style={s.statValue}>
             {avgCons != null ? avgCons.toFixed(1) : '—'}
           </Text>
           <Text style={s.statSub}>{t('dashboard.per100km')}</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* ── 4. Последние транзакции ────────────────────────────────────── */}
@@ -456,6 +564,90 @@ export default function DashboardScreen() {
         record={detail}
         currCode={currCode}
         onClose={() => setDetail(null)}
+        onEdit={detail?.kind !== 'service' ? handleDetailEdit : undefined}
+        onDelete={detail ? handleDetailDelete : undefined}
+      />
+
+      {/* ── Стат-модалки карточек ──────────────────────────────────────── */}
+      <DashStatModal
+        visible={showMonthModal}
+        onClose={() => setShowMonthModal(false)}
+        title={t('dashModal.breakdownTitle')}
+        icon="wallet-outline"
+        iconBg={colors.iconBgFuel}
+        iconColor={colors.accent}
+        rows={(() => {
+          const mb  = monthBreakdown;
+          const tot = (mb?.fuel ?? 0) + (mb?.expense ?? 0) + (mb?.service ?? 0);
+          const pct = (n: number) => tot > 0 ? ` · ${Math.round((n / tot) * 100)}%` : '';
+          return [
+            { label: t('dashModal.breakdownFuel'),    value: formatMoney(mb?.fuel    ?? 0, currCode) + pct(mb?.fuel    ?? 0) },
+            { label: t('dashModal.breakdownExp'),     value: formatMoney(mb?.expense ?? 0, currCode) + pct(mb?.expense ?? 0) },
+            { label: t('dashModal.breakdownSvc'),     value: formatMoney(mb?.service ?? 0, currCode) + pct(mb?.service ?? 0) },
+            { label: t('dashModal.breakdownTotal'),   value: formatMoney(tot, currCode), valueColor: colors.accent },
+          ] as StatRow[];
+        })()}
+        actionLabel={t('dashModal.breakdownToStats')}
+        onAction={() => { setShowMonthModal(false); router.push('/(tabs)/explore' as never); }}
+      />
+
+      <DashStatModal
+        visible={showPriceModal}
+        onClose={() => setShowPriceModal(false)}
+        title={t('dashModal.priceTitle')}
+        icon="water-outline"
+        iconBg={colors.iconBgFuel}
+        iconColor={colors.accent}
+        rows={(() => {
+          const pd = priceDetail;
+          const nd = t('dashModal.noData');
+          const trend = fmtTrend(pd?.trend ?? null);
+          return [
+            { label: t('dashModal.priceAvg3m'),   value: pd?.avg3m  != null ? formatMoney(pd.avg3m,  currCode) : nd },
+            { label: t('dashModal.priceMin'),      value: pd?.min    != null ? formatMoney(pd.min,    currCode) : nd, valueColor: pd?.min    != null ? colors.statusOk.text  : undefined },
+            { label: t('dashModal.priceMax'),      value: pd?.max    != null ? formatMoney(pd.max,    currCode) : nd, valueColor: pd?.max    != null ? colors.statusDue.text : undefined },
+            { label: t('dashModal.priceLastFill'), value: pd?.lastDate ? pd.lastDate.split('-').reverse().join('.') : nd },
+            { label: t('dashModal.priceTrend'),    value: trend.text, valueColor: trend.color },
+          ] as StatRow[];
+        })()}
+      />
+
+      <DashStatModal
+        visible={showConsModal}
+        onClose={() => setShowConsModal(false)}
+        title={t('dashModal.consTitle')}
+        icon="speedometer-outline"
+        iconBg={colors.iconBgService}
+        iconColor={colors.statusOk.text}
+        rows={(() => {
+          const cd  = consDetail;
+          const nd  = t('dashModal.noData');
+          const u   = t('addFuel.per100km');
+          const trend = fmtTrend(cd?.trend ?? null);
+          return [
+            { label: t('dashModal.consBest'),  value: cd?.best  != null ? `${cd.best.toFixed(1)} ${u}` : nd, valueColor: cd?.best  != null ? colors.statusOk.text  : undefined },
+            { label: t('dashModal.consWorst'), value: cd?.worst != null ? `${cd.worst.toFixed(1)} ${u}` : nd, valueColor: cd?.worst != null ? colors.statusDue.text : undefined },
+            { label: t('dashModal.consTrend'), value: trend.text, valueColor: trend.color },
+          ] as StatRow[];
+        })()}
+        listTitle={t('dashModal.consLast5')}
+        items={(() => {
+          const cd = consDetail;
+          if (!cd?.last5.length) return [];
+          const u = t('addFuel.per100km');
+          const bestVal  = cd.best;
+          const worstVal = cd.worst;
+          return cd.last5.map((entry) => ({
+            left:       entry.date.split('-').reverse().join('.'),
+            right:      `${entry.cons.toFixed(1)} ${u}`,
+            badge:      entry.cons === bestVal  ? t('dashModal.consBadgeBest')
+                      : entry.cons === worstVal ? t('dashModal.consBadgeWorst')
+                      : undefined,
+            badgeColor: entry.cons === bestVal  ? colors.statusOk.text
+                      : entry.cons === worstVal ? colors.statusDue.text
+                      : undefined,
+          } as StatItem));
+        })()}
       />
     </View>
   );
