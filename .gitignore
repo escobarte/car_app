@@ -41,3 +41,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# signing
+car_release*.jks
+key.properties
