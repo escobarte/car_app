@@ -2,14 +2,13 @@
  * Экспорт / импорт базы данных в JSON (раздел 9 ТЗ).
  *
  * Формат файла:
- *   car_backup_YYYY-MM-DD_HHmm.json
+ *   car_backup_YYYY-MM-DD.json
  *   { version:1, exportDate, car, settings, categories, reminders,
  *     fuelEntries, expenses, serviceRecords }
  */
 
-import { Platform }       from 'react-native';
-import * as FileSystem    from 'expo-file-system/legacy';
-import * as Sharing       from 'expo-sharing';
+import * as FileSystem   from 'expo-file-system/legacy';
+import * as Sharing      from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { openDatabase, Car, FuelEntry, Expense, Category, ServiceRecord, Reminder, AppSettings } from './database';
@@ -34,13 +33,8 @@ export type ImportResult =
 
 // ─── Экспорт ─────────────────────────────────────────────────────────────────
 
-/**
- * Собирает все данные из БД и сохраняет JSON.
- * Android: предлагает выбрать папку через SAF и сохраняет туда.
- * Fallback (iOS / SAF отклонён): открывает Share-диалог.
- * Возвращает имя файла при сохранении через SAF, иначе null.
- */
-export async function exportDatabase(): Promise<string | null> {
+/** Собирает все данные из БД, сохраняет JSON и открывает Share-диалог. */
+export async function exportDatabase(): Promise<void> {
   const db = await openDatabase();
 
   const [car, settings, categories, reminders, fuelEntries, expenses, serviceRecords] =
@@ -60,56 +54,34 @@ export async function exportDatabase(): Promise<string | null> {
     car, settings, categories, reminders, fuelEntries, expenses, serviceRecords,
   };
 
-  const now = new Date();
-  const datePart = now.toISOString().slice(0, 10);
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  const fileName = `car_backup_${datePart}_${hh}${mm}.json`;
-  const content  = JSON.stringify(backup, null, 2);
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = `car_backup_${today}.json`;
+  const uri = FileSystem.cacheDirectory + fileName;
 
-  if (Platform.OS === 'android') {
-    const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-    if (perm.granted) {
-      const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-        perm.directoryUri,
-        fileName,
-        'application/json',
-      );
-      await FileSystem.writeAsStringAsync(fileUri, content, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      return fileName;
-    }
-    // SAF отклонён — переходим к sharing
-  }
-
-  const tempUri = (FileSystem.cacheDirectory ?? '') + fileName;
-  await FileSystem.writeAsStringAsync(tempUri, content, {
+  await FileSystem.writeAsStringAsync(uri, JSON.stringify(backup, null, 2), {
     encoding: FileSystem.EncodingType.UTF8,
   });
 
   const canShare = await Sharing.isAvailableAsync();
   if (!canShare) throw new Error('Sharing is not available on this device');
 
-  await Sharing.shareAsync(tempUri, {
-    mimeType:    'application/json',
-    dialogTitle: 'Export data',
-    UTI:         'public.json',
+  await Sharing.shareAsync(uri, {
+    mimeType: 'application/json',
+    dialogTitle: 'Экспорт данных',
+    UTI: 'public.json',
   });
-
-  return null;
 }
 
 // ─── Импорт ──────────────────────────────────────────────────────────────────
 
 /**
- * Открывает file picker, читает JSON, валидирует структуру и заливает данные в БД.
+ * Открывает file picker, читает JSON, заливает данные в БД.
  * Возвращает ImportResult.
  */
 export async function importDatabase(): Promise<ImportResult> {
   // 1. Выбрать файл
   const result = await DocumentPicker.getDocumentAsync({
-    type: ['application/json', '*/*'],
+    type: ['application/json', 'text/plain', '*/*'],
     copyToCacheDirectory: true,
   });
 
@@ -119,20 +91,14 @@ export async function importDatabase(): Promise<ImportResult> {
 
   const fileUri = result.assets[0].uri;
 
-  // 2. Прочитать, распарсить и валидировать структуру
+  // 2. Прочитать и распарсить
   let backup: BackupData;
   try {
     const raw = await FileSystem.readAsStringAsync(fileUri, {
       encoding: FileSystem.EncodingType.UTF8,
     });
     backup = JSON.parse(raw) as BackupData;
-
-    if (backup.version !== 1)                 throw new Error('Unknown backup version');
-    if (!Array.isArray(backup.categories))    throw new Error('Missing categories');
-    if (!Array.isArray(backup.reminders))     throw new Error('Missing reminders');
-    if (!Array.isArray(backup.fuelEntries))   throw new Error('Missing fuelEntries');
-    if (!Array.isArray(backup.expenses))      throw new Error('Missing expenses');
-    if (!Array.isArray(backup.serviceRecords)) throw new Error('Missing serviceRecords');
+    if (backup.version !== 1) throw new Error('Unknown backup version');
   } catch (e) {
     return { ok: false, error: `Не удалось прочитать файл: ${String(e)}` };
   }
@@ -168,7 +134,7 @@ export async function importDatabase(): Promise<ImportResult> {
       }
 
       // Категории — сохраняем оригинальные id
-      for (const c of backup.categories) {
+      for (const c of backup.categories ?? []) {
         await txn.runAsync(
           `INSERT INTO category (id, key, name, icon, is_builtin) VALUES (?,?,?,?,?);`,
           c.id, c.key, c.name, c.icon, c.is_builtin,
@@ -176,7 +142,7 @@ export async function importDatabase(): Promise<ImportResult> {
       }
 
       // Регламенты
-      for (const r of backup.reminders) {
+      for (const r of backup.reminders ?? []) {
         await txn.runAsync(
           `INSERT INTO reminder
              (id, car_id, title, type, interval_km, interval_days, last_odometer, last_date, warn_before)
@@ -188,7 +154,7 @@ export async function importDatabase(): Promise<ImportResult> {
       }
 
       // Заправки
-      for (const f of backup.fuelEntries) {
+      for (const f of backup.fuelEntries ?? []) {
         await txn.runAsync(
           `INSERT INTO fuel_entry
              (id, car_id, date, odometer, liters, total_cost, price_per_liter, is_full_tank, consumption)
@@ -199,7 +165,7 @@ export async function importDatabase(): Promise<ImportResult> {
       }
 
       // Расходы
-      for (const e of backup.expenses) {
+      for (const e of backup.expenses ?? []) {
         await txn.runAsync(
           `INSERT INTO expense
              (id, car_id, category_id, date, odometer, amount, description)
@@ -210,7 +176,7 @@ export async function importDatabase(): Promise<ImportResult> {
       }
 
       // Записи обслуживания
-      for (const s of backup.serviceRecords) {
+      for (const s of backup.serviceRecords ?? []) {
         await txn.runAsync(
           `INSERT INTO service_record
              (id, car_id, reminder_id, date, odometer, cost, note)
@@ -222,10 +188,10 @@ export async function importDatabase(): Promise<ImportResult> {
 
       // Сбрасываем auto-increment последовательности
       await txn.execAsync(`
-        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM category)       WHERE name='category';
-        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM reminder)       WHERE name='reminder';
-        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM fuel_entry)     WHERE name='fuel_entry';
-        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM expense)        WHERE name='expense';
+        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM category)      WHERE name='category';
+        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM reminder)      WHERE name='reminder';
+        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM fuel_entry)    WHERE name='fuel_entry';
+        UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM expense)       WHERE name='expense';
         UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM service_record) WHERE name='service_record';
       `);
     });
