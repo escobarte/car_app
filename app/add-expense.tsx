@@ -113,7 +113,7 @@ export default function AddExpenseScreen() {
 
   // ── UI-состояние ─────────────────────────────────────────────────────────
   const [focused, setFocused] = useState<string | null>(null);
-  const [errors,  setErrors]  = useState<{ category?: string; amount?: string }>({});
+  const [errors,  setErrors]  = useState<{ category?: string; amount?: string; odometer?: string }>({});
   const [saving,  setSaving]  = useState(false);
 
   // ── Загрузка ─────────────────────────────────────────────────────────────
@@ -153,6 +153,14 @@ export default function AddExpenseScreen() {
     const num = parseNum(amount);
     if (isNaN(num) || num <= 0) {
       errs.amount = t('addExpense.errorAmount');
+    }
+    // Пробег необязателен, но если заполнен и меньше текущего — ошибка
+    const rawOdo = odometer.trim();
+    if (rawOdo && !isEdit) {
+      const odoNum = parseInt(rawOdo, 10);
+      if (isNaN(odoNum) || (currentOdo !== null && odoNum < currentOdo)) {
+        errs.odometer = t('common.errorOdometer');
+      }
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -358,15 +366,18 @@ export default function AddExpenseScreen() {
         {/* ── Пробег (необязательно) ─────────────────────────────────── */}
         <Text style={s.fieldLabel}>{t('addExpense.odometer')}</Text>
         <TextInput
-          style={inputStyle('odometer')}
+          style={inputStyle('odometer', !!errors.odometer)}
           value={odometer}
-          onChangeText={setOdometer}
+          onChangeText={(v) => { setOdometer(v); if (errors.odometer) setErrors((p) => ({ ...p, odometer: undefined })); }}
           onFocus={() => setFocused('odometer')}
           onBlur={()  => setFocused(null)}
           keyboardType="number-pad"
           placeholder={currentOdo != null ? String(currentOdo) : '—'}
           placeholderTextColor={colors.textWeak}
         />
+        {errors.odometer && (
+          <Text style={s.errorText}>{errors.odometer}</Text>
+        )}
 
         {/* ── Кнопка сохранения ───────────────────────────────────────── */}
         <TouchableOpacity

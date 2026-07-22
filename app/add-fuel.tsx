@@ -85,7 +85,7 @@ export default function AddFuelScreen() {
   const [odometer,    setOdometer]    = useState('');
   const [liters,      setLiters]      = useState('');
   const [totalCost,   setTotalCost]   = useState('');
-  const [isFullTank,  setIsFullTank]  = useState(true);
+  const [isFullTank,  setIsFullTank]  = useState(false);
   const [focused,     setFocused]     = useState<string | null>(null);
   const [errors,      setErrors]      = useState<Record<string, string>>({});
 
@@ -107,10 +107,6 @@ export default function AddFuelScreen() {
       if (car) {
         setCurrency(car.currency);
         setCurrentOdometer(car.current_odometer);
-        if (!isEdit) {
-          // При добавлении — одометр по умолчанию = текущий
-          setOdometer(String(car.current_odometer));
-        }
       }
       if (lastFull) {
         setLastFullOdo(lastFull.odometer);

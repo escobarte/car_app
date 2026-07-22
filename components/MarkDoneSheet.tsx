@@ -84,25 +84,38 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
   const [note,     setNote]     = useState('');
   const [saving,   setSaving]   = useState(false);
   const [focused,  setFocused]  = useState<string | null>(null);
+  const [odoError, setOdoError] = useState('');
 
-  // Каждый раз при открытии — сбрасываем поля и подставляем текущий пробег.
+  // Каждый раз при открытии — сбрасываем поля; текущий пробег виден как placeholder.
   useEffect(() => {
     if (visible) {
       setDate(new Date());
-      setOdo(String(car?.current_odometer ?? ''));
+      setOdo('');
       setCost('');
       setNote('');
       setFocused(null);
+      setOdoError('');
     }
-  }, [visible, car?.current_odometer]);
+  }, [visible]);
 
   // ── Сохранение ───────────────────────────────────────────────────────────
   async function handleSave() {
     if (!reminder || saving) return;
+
+    // Валидация пробега: если заполнен — не должен быть меньше текущего
+    const odoTrimmed = odo.trim();
+    if (odoTrimmed) {
+      const parsed = parseInt(odoTrimmed, 10);
+      if (isNaN(parsed) || parsed < (car?.current_odometer ?? 0)) {
+        setOdoError(t('common.errorOdometer'));
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const dateStr = toISO(date);
-      const odoNum  = odo.trim() ? parseInt(odo.trim(), 10) : (car?.current_odometer ?? 0);
+      const odoNum  = odoTrimmed ? parseInt(odoTrimmed, 10) : (car?.current_odometer ?? 0);
       const costNum = cost.trim() ? parseNum(cost) : 0;
 
       await serviceRepo.addServiceRecord({
@@ -210,15 +223,16 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
             {/* Пробег */}
             <Text style={s.fieldLabel}>{t('service.odoField')}</Text>
             <TextInput
-              style={inputStyle('odo')}
+              style={[inputStyle('odo'), odoError ? s.inputError : undefined]}
               value={odo}
-              onChangeText={setOdo}
+              onChangeText={(v) => { setOdo(v); if (odoError) setOdoError(''); }}
               onFocus={() => setFocused('odo')}
               onBlur={() => setFocused(null)}
               keyboardType="number-pad"
               placeholder={String(car?.current_odometer ?? 0)}
               placeholderTextColor={colors.textWeak}
             />
+            {!!odoError && <Text style={s.errorText}>{odoError}</Text>}
 
             {/* Стоимость */}
             <Text style={s.fieldLabel}>
@@ -331,7 +345,14 @@ function makeStyles(th: AppTheme, bottomInset: number) {
       ...typography.cardText,
     },
     inputFocused:    { borderColor: colors.borderAccent },
+    inputError:      { borderColor: colors.statusDue.text },
     inputMultiline:  { minHeight: 68, paddingTop: 12 },
+    errorText: {
+      color:     colors.statusDue.text,
+      fontSize:  12,
+      marginTop: 4,
+      marginBottom: 4,
+    },
     inputText:       { color: colors.textPrimary, ...typography.cardText },
     dateRow: {
       flexDirection:  'row',

@@ -18,8 +18,9 @@ const en: TranslationKeys = {
     back:      'Back',
     yes:       'Yes',
     no:        'No',
-    km:        'km',
-    liters:    'L',
+    km:            'km',
+    liters:        'L',
+    errorOdometer: 'Odometer cannot be less than current',
     days_one:  'day',
     days_few:  'days',
     days_many: 'days',
@@ -208,6 +209,7 @@ const en: TranslationKeys = {
     exportData:          'Export data',
     importData:          'Import data',
     categories:          'Expense categories',
+    editOdometerTitle:   'New odometer, km',
   },
 
   notifications: {

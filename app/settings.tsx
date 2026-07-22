@@ -6,11 +6,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -104,6 +107,11 @@ export default function SettingsScreen() {
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [backupState,  setBackupState]  = useState<'idle' | 'working' | 'done' | 'error'>('idle');
 
+  // Редактирование пробега
+  const [showOdoModal, setShowOdoModal] = useState(false);
+  const [odoInput,     setOdoInput]     = useState('');
+  const [odoError,     setOdoError]     = useState('');
+
   const loadData = useCallback(async () => {
     const [car, settings] = await Promise.all([carRepo.getCar(), settingsRepo.getSettings()]);
     if (car) { setCarName(car.name); setOdometer(car.current_odometer); setCurrency(car.currency); }
@@ -114,6 +122,29 @@ export default function SettingsScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  function openOdoModal() {
+    setOdoInput('');
+    setOdoError('');
+    setShowOdoModal(true);
+  }
+
+  async function handleOdoSave() {
+    const raw = odoInput.trim();
+    if (!raw) { setShowOdoModal(false); return; }
+    const num = parseInt(raw, 10);
+    if (isNaN(num) || num < odometer) {
+      setOdoError(t('common.errorOdometer'));
+      return;
+    }
+    try {
+      await carRepo.updateCar({ current_odometer: num });
+      setOdometer(num);
+      setShowOdoModal(false);
+    } catch (e) {
+      console.error('[Settings] updateCar odometer', e);
+    }
+  }
 
   async function handleNotifToggle(value: boolean) {
     setNotifEnabled(value);
@@ -244,7 +275,7 @@ export default function SettingsScreen() {
         <SectionHeader label={t('settings.sectionCar')} colors={colors} />
         <View style={s.card}>
           <NavRow label={t('settings.carName')}    value={carName}                              isLast={false} colors={colors} radius={radius} />
-          <NavRow label={t('settings.odometer')}   value={`${odometer} ${t('common.km')}`}      isLast={false} colors={colors} radius={radius} />
+          <NavRow label={t('settings.odometer')}   value={`${odometer} ${t('common.km')}`}      isLast={false} colors={colors} radius={radius} onPress={openOdoModal} />
           <NavRow label={t('settings.categories')} onPress={() => router.push('/categories' as never)} isLast colors={colors} radius={radius} />
         </View>
 
@@ -292,6 +323,52 @@ export default function SettingsScreen() {
 
         <View style={s.bottomPad} />
       </ScrollView>
+
+      {/* ── Модалка редактирования пробега ─────────────────────────────── */}
+      <Modal
+        visible={showOdoModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowOdoModal(false)}
+        statusBarTranslucent
+        navigationBarTranslucent
+      >
+        <KeyboardAvoidingView
+          style={s.odoOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={s.odoSheet}>
+            <Text style={s.odoTitle}>{t('settings.editOdometerTitle')}</Text>
+            <TextInput
+              style={[s.odoInput, odoError ? s.odoInputError : undefined]}
+              value={odoInput}
+              onChangeText={(v) => { setOdoInput(v); if (odoError) setOdoError(''); }}
+              keyboardType="number-pad"
+              placeholder={String(odometer)}
+              placeholderTextColor={colors.textWeak}
+              autoFocus
+              selectionColor={colors.accent}
+            />
+            {!!odoError && <Text style={s.odoError}>{odoError}</Text>}
+            <View style={s.odoActions}>
+              <TouchableOpacity
+                style={[s.odoBtn, { borderColor: colors.border }]}
+                onPress={() => setShowOdoModal(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.odoBtnText, { color: colors.textSecondary }]}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.odoBtn, { borderColor: colors.borderAccent, backgroundColor: colors.activeCard }]}
+                onPress={handleOdoSave}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.odoBtnText, { color: colors.accent }]}>{t('common.save')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -317,5 +394,57 @@ function makeStyles(th: AppTheme) {
     // TEMP: удалить после проверки push
     debugBtn:     { paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center' },
     debugBtnText: { ...typography.cardText, fontWeight: '500' as const },
+
+    // ── Модалка пробега ───────────────────────────────────────────────────────
+    odoOverlay: {
+      flex:            1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent:  'flex-end',
+    },
+    odoSheet: {
+      backgroundColor:      colors.surface,
+      borderTopLeftRadius:  20,
+      borderTopRightRadius: 20,
+      padding:              24,
+      paddingBottom:        32,
+    },
+    odoTitle: {
+      color:         colors.textSecondary,
+      ...typography.labelSmall,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom:  10,
+    },
+    odoInput: {
+      backgroundColor:   colors.background,
+      borderRadius:      radius.card,
+      borderWidth:       1,
+      borderColor:       colors.border,
+      paddingHorizontal: 16,
+      paddingVertical:   14,
+      color:             colors.textPrimary,
+      ...typography.cardText,
+      marginBottom:      4,
+    },
+    odoInputError: { borderColor: colors.statusDue.text },
+    odoError: {
+      color:        colors.statusDue.text,
+      ...typography.labelSmall,
+      marginBottom: 12,
+      marginLeft:   4,
+    },
+    odoActions: {
+      flexDirection:  'row',
+      gap:            10,
+      marginTop:      16,
+    },
+    odoBtn: {
+      flex:            1,
+      paddingVertical: 13,
+      borderRadius:    radius.card,
+      borderWidth:     1,
+      alignItems:      'center',
+    },
+    odoBtnText: { ...typography.cardTextMedium },
   });
 }
