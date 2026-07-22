@@ -218,7 +218,8 @@ const en: TranslationKeys = {
   },
 
   backup: {
-    exportSuccess:       'Backup file created',
+    exportSuccess:       'File saved',
+    exportSavedSAF:      '«{{name}}» saved to selected folder',
     exportError:         'Failed to create backup',
     importConfirmTitle:  'Restore data?',
     importConfirmMsg:    'This will overwrite ALL current app data. Continue?',

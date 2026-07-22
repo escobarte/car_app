@@ -125,7 +125,13 @@ export default function SettingsScreen() {
   async function handleExport() {
     setBackupState('working');
     try {
-      await exportDatabase();
+      const savedFileName = await exportDatabase();
+      if (savedFileName) {
+        Alert.alert(
+          t('backup.exportSuccess'),
+          t('backup.exportSavedSAF', { name: savedFileName }),
+        );
+      }
       setBackupState('idle');
     } catch (e) {
       Alert.alert(t('backup.exportError'), String(e));
