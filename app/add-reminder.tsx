@@ -10,7 +10,7 @@
  *  5. Кнопка сохранения
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -21,7 +21,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -38,6 +38,11 @@ export default function AddReminderScreen() {
   const { colors, radius, typography, gradient } = th;
   const s = useMemo(() => makeStyles(th), [th]);
 
+  // ── Режим редактирования ──────────────────────────────────────────────────
+  const params = useLocalSearchParams<{ editId?: string }>();
+  const editId = params.editId ? parseInt(params.editId, 10) : null;
+  const isEdit = editId !== null && !isNaN(editId);
+
   // ── Поля формы ────────────────────────────────────────────────────────────
   const [name,       setName]       = useState('');
   const [type,       setType]       = useState<ReminderType>('mileage');
@@ -45,13 +50,31 @@ export default function AddReminderScreen() {
   const [warnBefore, setWarnBefore] = useState('');
 
   // ── UI-состояние ─────────────────────────────────────────────────────────
-  const [focused, setFocused] = useState<string | null>(null);
-  const [errors,  setErrors]  = useState<{
+  const [focused,     setFocused]     = useState<string | null>(null);
+  const [errors,      setErrors]      = useState<{
     name?: string;
     interval?: string;
     warn?: string;
   }>({});
-  const [saving, setSaving] = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(isEdit);
+
+  // ── Загрузка данных при редактировании ────────────────────────────────────
+  useEffect(() => {
+    if (!isEdit) return;
+    reminderRepo.getReminderById(editId!).then(r => {
+      if (!r) { setLoadingEdit(false); return; }
+      setName(r.title);
+      setType(r.type as ReminderType);
+      setInterval(String(r.type === 'mileage' ? (r.interval_km ?? '') : (r.interval_days ?? '')));
+      setWarnBefore(String(r.warn_before));
+      setLoadingEdit(false);
+    }).catch(e => {
+      console.error('[AddReminder] load edit', e);
+      setLoadingEdit(false);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Валидация ────────────────────────────────────────────────────────────
 
@@ -80,22 +103,33 @@ export default function AddReminderScreen() {
     try {
       const iv = parseInt(interval.trim(), 10);
       const wb = parseInt(warnBefore.trim(), 10);
-      const today = new Date();
-      const y = today.getFullYear();
-      const m = String(today.getMonth() + 1).padStart(2, '0');
-      const d = String(today.getDate()).padStart(2, '0');
-      const todayStr = `${y}-${m}-${d}`;
 
-      await reminderRepo.addReminder({
-        car_id:        1,
-        title:         name.trim(),
-        type,
-        interval_km:   type === 'mileage' ? iv   : null,
-        interval_days: type === 'time'    ? iv   : null,
-        last_odometer: 0,
-        last_date:     todayStr,
-        warn_before:   wb,
-      });
+      if (isEdit) {
+        await reminderRepo.updateReminder(editId!, {
+          title:         name.trim(),
+          type,
+          interval_km:   type === 'mileage' ? iv   : null,
+          interval_days: type === 'time'    ? iv   : null,
+          warn_before:   wb,
+        });
+      } else {
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        const todayStr = `${y}-${m}-${d}`;
+
+        await reminderRepo.addReminder({
+          car_id:        1,
+          title:         name.trim(),
+          type,
+          interval_km:   type === 'mileage' ? iv   : null,
+          interval_days: type === 'time'    ? iv   : null,
+          last_odometer: 0,
+          last_date:     todayStr,
+          warn_before:   wb,
+        });
+      }
       router.back();
     } catch (e) {
       console.error('[AddReminder]', e);
@@ -115,6 +149,14 @@ export default function AddReminderScreen() {
 
   // ── Рендер ───────────────────────────────────────────────────────────────
 
+  if (loadingEdit) {
+    return (
+      <View style={[s.root, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={s.fieldLabel}>{t('common.loading')}</Text>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={s.root}
@@ -129,7 +171,9 @@ export default function AddReminderScreen() {
         >
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>{t('addReminder.title')}</Text>
+        <Text style={s.headerTitle}>
+          {isEdit ? t('addReminder.editTitle') : t('addReminder.title')}
+        </Text>
         <View style={s.headerSpacer} />
       </View>
 
@@ -238,7 +282,7 @@ export default function AddReminderScreen() {
             style={s.saveBtn}
           >
             <Text style={s.saveBtnText}>
-              {saving ? '…' : t('addReminder.saveBtn')}
+              {saving ? '…' : (isEdit ? t('addReminder.editSaveBtn') : t('addReminder.saveBtn'))}
             </Text>
           </LinearGradient>
         </TouchableOpacity>

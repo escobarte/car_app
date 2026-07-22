@@ -19,6 +19,7 @@ const en: TranslationKeys = {
     yes:       'Yes',
     no:        'No',
     km:        'km',
+    liters:    'L',
     days_one:  'day',
     days_few:  'days',
     days_many: 'days',
@@ -124,6 +125,7 @@ const en: TranslationKeys = {
 
   addReminder: {
     title:          'New schedule',
+    editTitle:      'Edit schedule',
     name:           'Name',
     namePlaceholder:'E.g. Oil change',
     typeMileage:    'By mileage',
@@ -135,6 +137,7 @@ const en: TranslationKeys = {
     warnDays:       'days before due',
     typeLabel:      'Type',
     saveBtn:        'Save schedule',
+    editSaveBtn:    'Save changes',
     errorName:      'Enter a name',
     errorInterval:  'Enter an interval',
     errorWarn:      'Enter warn threshold',
@@ -185,6 +188,7 @@ const en: TranslationKeys = {
     metricDistance:    'Distance for period',
     metricMin:         'Minimum',
     metricMax:         'Maximum',
+    donutMonthTitle:   'Fuel fill-ups: {{month}}',
   },
 
   settings: {
@@ -261,6 +265,23 @@ const en: TranslationKeys = {
     title: 'Language',
     ru:    'Русский',
     en:    'English',
+  },
+
+  reminderDetail: {
+    type:           'Type',
+    typeMileage:    'By mileage',
+    typeTime:       'By time',
+    interval:       'Interval',
+    lastDate:       'Last done (date)',
+    lastOdo:        'Last done (odometer)',
+    remaining:      'Remaining until due',
+    historyTitle:   'History of this schedule',
+    noHistory:      'No work recorded yet',
+    editBtn:        'Edit',
+    doneBtn:        'Mark done',
+    deleteTitle:    'Delete schedule?',
+    deleteMsg:      'Work history will be kept, but the schedule will be removed from the list.',
+    deleteConfirm:  'Delete',
   },
 
   dashModal: {

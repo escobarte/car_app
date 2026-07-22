@@ -44,6 +44,7 @@ import {
   type StatusKind, type ReminderRow,
 } from '@/utils/reminders';
 import MarkDoneSheet from '@/components/MarkDoneSheet';
+import ReminderDetailModal from '@/components/ReminderDetailModal';
 
 // ─── Компонент ───────────────────────────────────────────────────────────────
 
@@ -79,8 +80,13 @@ export default function ServiceScreen() {
   const [history, setHistory] = useState<ServiceRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Bottom-sheet «Отметить выполнение» — отдельный переиспользуемый компонент.
+  // Bottom-sheet «Отметить выполнение»
   const [doneTarget, setDoneTarget] = useState<Reminder | null>(null);
+
+  // Модалка деталей регламента
+  const [selectedRow,   setSelectedRow]   = useState<ReminderRow | null>(null);
+  const [showDetail,    setShowDetail]    = useState(false);
+  const [detailHistory, setDetailHistory] = useState<ServiceRecord[]>([]);
 
   // ── Загрузка данных ───────────────────────────────────────────────────────
 
@@ -114,6 +120,38 @@ export default function ServiceScreen() {
       return () => { active = false; };
     }, [loadData])
   );
+
+  // ── Обработчики модалки деталей ──────────────────────────────────────────
+
+  async function handleCardPress(row: ReminderRow) {
+    setSelectedRow(row);
+    const hist = await serviceRepo.getServiceRecordsByReminder(row.reminder.id!);
+    setDetailHistory(hist);
+    setShowDetail(true);
+  }
+
+  function handleDetailEdit(id: number) {
+    setShowDetail(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    router.push(`/add-reminder?editId=${id}` as any);
+  }
+
+  async function handleDetailDelete(id: number) {
+    try {
+      await reminderRepo.deleteReminder(id);
+    } catch (e) {
+      console.error('[ServiceScreen] deleteReminder', e);
+      return;
+    }
+    setShowDetail(false);
+    setSelectedRow(null);
+    loadData().catch(console.error);
+  }
+
+  function handleDetailDone(reminder: Reminder) {
+    setShowDetail(false);
+    setDoneTarget(reminder);
+  }
 
   // ── Текст остатка ─────────────────────────────────────────────────────────
 
@@ -178,7 +216,12 @@ export default function ServiceScreen() {
             const pctFill   = `${Math.round(progress * 100)}%` as `${number}%`;
 
             return (
-              <View key={reminder.id} style={s.reminderCard}>
+              <TouchableOpacity
+                key={reminder.id}
+                style={s.reminderCard}
+                onPress={() => handleCardPress(row)}
+                activeOpacity={0.85}
+              >
                 {/* ── Заголовок карточки ────────────────────────────────── */}
                 <View style={s.cardHeader}>
                   <View style={s.cardTitleRow}>
@@ -231,7 +274,7 @@ export default function ServiceScreen() {
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -294,6 +337,18 @@ export default function ServiceScreen() {
         car={car}
         onClose={() => setDoneTarget(null)}
         onSaved={() => { loadData().catch(console.error); }}
+      />
+
+      {/* Модалка деталей регламента */}
+      <ReminderDetailModal
+        visible={showDetail}
+        onClose={() => setShowDetail(false)}
+        row={selectedRow}
+        history={detailHistory}
+        car={car}
+        onEdit={handleDetailEdit}
+        onDelete={handleDetailDelete}
+        onDone={handleDetailDone}
       />
     </View>
   );

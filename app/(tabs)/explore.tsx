@@ -225,7 +225,11 @@ export default function StatsScreen() {
   const [maxOdoMap, setMaxOdoMap] = useState<Record<string, number>>({});
   const [consStats, setConsStats] = useState<ConsStats | null>(null);
   const [catStats,  setCatStats]  = useState<CatStat[]>([]);
+  const [allFuel,   setAllFuel]   = useState<FuelEntry[]>([]);
   const [loading,   setLoading]   = useState(true);
+
+  // Выбранный сектор donut («Доля трат по месяцам»)
+  const [selectedDonutKey, setSelectedDonutKey] = useState<string | null>(null);
 
   // ── Загрузка ───────────────────────────────────────────────────────────────
   useFocusEffect(
@@ -247,11 +251,20 @@ export default function StatsScreen() {
         setMaxOdoMap(aggMaxOdo(fuel, MONTHS));
         setConsStats(buildConsStats(fuel, MONTHS));
         setCatStats(buildCatStats(expenses, cats, MONTHS));
+        setAllFuel(fuel);
         setLoading(false);
       })().catch(console.error);
       return () => { active = false; };
     }, [MONTHS]),
   );
+
+  // ── Записи выбранного месяца в donut (только «Топливо») ─────────────────────
+  const donutMonthRecords = useMemo(() => {
+    if (!selectedDonutKey) return [];
+    return allFuel
+      .filter(f => f.date.startsWith(selectedDonutKey))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [selectedDonutKey, allFuel]);
 
   // ── Данные текущей вкладки ─────────────────────────────────────────────────
   const chartData = useMemo(() => {
@@ -338,7 +351,7 @@ export default function StatsScreen() {
             <TouchableOpacity
               key={tab}
               style={s.pillOuter}
-              onPress={() => setActiveTab(tab)}
+              onPress={() => { setActiveTab(tab); setSelectedDonutKey(null); }}
               activeOpacity={active ? 1 : 0.75}
             >
               {active ? (
@@ -476,7 +489,48 @@ export default function StatsScreen() {
             label: monthAbbr(ym, locale),
             value: fuelMap[ym] ?? 0,
           }))}
+          selectedKey={selectedDonutKey}
+          onSelectKey={setSelectedDonutKey}
         />
+      )}
+
+      {/* ── Записи выбранного месяца (donut drill-down) ─────────────────────── */}
+      {activeTab === 'fuel' && selectedDonutKey && (
+        <>
+          <Text style={s.sectionHeader}>
+            {t('stats.donutMonthTitle', { month: monthFull(selectedDonutKey, locale) })}
+          </Text>
+          {donutMonthRecords.length === 0 ? (
+            <View style={s.emptyCard}>
+              <Text style={s.noDataText}>{t('stats.noData')}</Text>
+            </View>
+          ) : (
+            <View style={s.catCard}>
+              {donutMonthRecords.map((f, idx) => (
+                <View
+                  key={f.id}
+                  style={[s.catRow, idx < donutMonthRecords.length - 1 && s.catBorder]}
+                >
+                  <View style={s.catIconWrap}>
+                    <Ionicons name="water-outline" size={15} color={colors.textSecondary} />
+                  </View>
+                  <View style={s.catBody}>
+                    <View style={s.catTopRow}>
+                      <Text style={s.catName} numberOfLines={1}>
+                        {f.date}
+                        {f.is_full_tank === 1 ? `  ·  ${t('addFuel.fullTank').toLowerCase()}` : ''}
+                      </Text>
+                      <Text style={s.catAmount}>{formatMoney(f.total_cost, currCode)}</Text>
+                    </View>
+                    <Text style={s.donutSubText}>
+                      {f.liters.toFixed(2)} {t('common.liters')}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </>
       )}
 
       {/* ── Метрики расхода 2×2 (только «Расход л/100») ─────────────────────── */}
@@ -812,6 +866,13 @@ function makeStyles(th: AppTheme, topInset: number) {
       height:          4,
       borderRadius:    2,
       backgroundColor: colors.accent,
+    },
+
+    // ── Строки drill-down donut ────────────────────────────────────────────────
+    donutSubText: {
+      color:    colors.textWeak,
+      fontSize: 11,
+      fontWeight: '400' as const,
     },
   });
 }

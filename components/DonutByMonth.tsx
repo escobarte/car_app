@@ -6,10 +6,13 @@
  * hidden), поэтому корректно рисуется при любом угле (в т.ч. > 180°) и без
  * «шва» на стыке. Цвет сегментов — один голубой из темы (colors.accent) с
  * градацией прозрачности (светлее = меньшая доля). Всё поверх surface-карточки.
+ *
+ * Интерактивность: тап по строке легенды выделяет сектор (остальные приглушены).
+ * Повторный тап снимает выделение. Передаётся через selectedKey / onSelectKey.
  */
 
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { AppTheme } from '@/constants/theme';
@@ -43,12 +46,6 @@ function roundTo100(vals: number[]): number[] {
 
 // ─── Геометрия: полуплоскость и сектор ──────────────────────────────────────
 
-/**
- * Оставляет только точки на «+x» стороне линии через центр под углом `angle`.
- * Реализация: поворот на angle → клип правой половины (overflow hidden) →
- * контрповорот, чтобы вложенные слои жили в экранных осях (клипы композируются
- * в пересечение).
- */
 function HalfPlane({ size, angle, children }: {
   size: number; angle: number; children: React.ReactNode;
 }) {
@@ -64,7 +61,6 @@ function HalfPlane({ size, angle, children }: {
   );
 }
 
-/** Сектор [from, to] сплошного цвета (to − from ≤ 180), прозрачный снаружи. */
 function Sector({ size, from, to, color }: {
   size: number; from: number; to: number; color: string;
 }) {
@@ -83,68 +79,114 @@ export type DonutDatum = { key: string; label: string; value: number };
 
 // ─── Компонент ────────────────────────────────────────────────────────────────
 
-export default function DonutByMonth({ data }: { data: DonutDatum[] }) {
+export default function DonutByMonth({
+  data,
+  selectedKey,
+  onSelectKey,
+}: {
+  data: DonutDatum[];
+  selectedKey?: string | null;
+  onSelectKey?: (key: string | null) => void;
+}) {
   const { t } = useTranslation();
   const th = useAppTheme();
   const s = useMemo(() => makeStyles(th), [th]);
   const { colors } = th;
 
-  const { sectors, legend, total } = useMemo(() => {
+  const { sectorGroups, legend, total } = useMemo(() => {
     const items = data.filter(d => d.value > 0).sort((a, b) => b.value - a.value);
     const sum   = items.reduce((acc, d) => acc + d.value, 0);
-    if (sum <= 0) return { sectors: [] as React.ReactNode[], legend: [], total: 0 };
+    if (sum <= 0) {
+      return {
+        sectorGroups: [] as { key: string; nodes: React.ReactNode[] }[],
+        legend: [],
+        total:  0,
+      };
+    }
 
     const pct = roundTo100(items.map(d => (d.value / sum) * 100));
-    const n = items.length;
+    const n   = items.length;
 
     const legendRows = items.map((it, i) => ({
       key:   it.key,
       label: it.label,
       pct:   pct[i],
-      // Градация светлоты: большая доля — насыщеннее, меньшая — светлее.
       color: hexToRgba(colors.accent, n <= 1 ? 1 : 1 - (i / (n - 1)) * 0.6),
     }));
 
-    // Сектора рисуем по точным долям (не по округлённым процентам), от «12 часов».
-    const secs: React.ReactNode[] = [];
+    const groups: { key: string; nodes: React.ReactNode[] }[] = [];
     let cursor = -90;
     legendRows.forEach((row, idx) => {
+      const groupNodes: React.ReactNode[] = [];
       const deg = (items[idx].value / sum) * 360;
       let start = cursor;
       let left  = deg;
+      let segI  = 0;
       while (left > 0.01) {
         const step = Math.min(left, 180);
-        secs.push(
-          <Sector key={`${row.key}-${start}`} size={SIZE} from={start} to={start + step} color={row.color} />,
+        groupNodes.push(
+          <Sector key={segI} size={SIZE} from={start} to={start + step} color={row.color} />,
         );
-        start += step;
-        left  -= step;
+        start += step; left -= step; segI++;
       }
       cursor += deg;
+      groups.push({ key: row.key, nodes: groupNodes });
     });
 
-    return { sectors: secs, legend: legendRows, total: sum };
+    return { sectorGroups: groups, legend: legendRows, total: sum };
   }, [data, colors.accent]);
 
   if (total <= 0) return null;
+
+  function handleSelect(key: string) {
+    onSelectKey?.(selectedKey === key ? null : key);
+  }
 
   return (
     <>
       <Text style={s.sectionHeader}>{t('stats.shareByMonth')}</Text>
       <View style={s.card}>
+        {/* ── Круговая диаграмма ──────────────────────────────────────── */}
         <View style={s.donutBox}>
-          {sectors}
+          {sectorGroups.map(g => (
+            <View
+              key={g.key}
+              style={[
+                { position: 'absolute', width: SIZE, height: SIZE },
+                selectedKey != null && selectedKey !== g.key
+                  ? { opacity: 0.25 }
+                  : undefined,
+              ]}
+            >
+              {g.nodes}
+            </View>
+          ))}
           <View style={s.hole} />
         </View>
 
+        {/* ── Легенда ─────────────────────────────────────────────────── */}
         <View style={s.legend}>
-          {legend.map(row => (
-            <View key={row.key} style={s.legendRow}>
-              <View style={[s.swatch, { backgroundColor: row.color }]} />
-              <Text style={s.legendLabel} numberOfLines={1}>{row.label}</Text>
-              <Text style={s.legendPct}>{row.pct}%</Text>
-            </View>
-          ))}
+          {legend.map(row => {
+            const isSelected = selectedKey === row.key;
+            const isDimmed   = selectedKey != null && !isSelected;
+            return (
+              <TouchableOpacity
+                key={row.key}
+                style={[s.legendRow, isSelected && s.legendRowSelected]}
+                onPress={() => handleSelect(row.key)}
+                activeOpacity={0.7}
+              >
+                <View style={[s.swatch, { backgroundColor: row.color }, isDimmed && { opacity: 0.35 }]} />
+                <Text
+                  style={[s.legendLabel, isSelected && { color: colors.textPrimary }]}
+                  numberOfLines={1}
+                >
+                  {row.label}
+                </Text>
+                <Text style={[s.legendPct, isDimmed && { opacity: 0.5 }]}>{row.pct}%</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
     </>
@@ -184,13 +226,19 @@ function makeStyles(th: AppTheme) {
       backgroundColor: colors.surface,
     },
     legend: {
-      flex:        1,
-      marginLeft:  18,
-      gap:         8,
+      flex:       1,
+      marginLeft: 18,
+      gap:        4,
     },
     legendRow: {
       flexDirection: 'row',
       alignItems:    'center',
+      paddingVertical:   4,
+      paddingHorizontal: 6,
+      borderRadius:  radius.badge,
+    },
+    legendRowSelected: {
+      backgroundColor: `${colors.accent}18`,
     },
     swatch: {
       width:        12,
