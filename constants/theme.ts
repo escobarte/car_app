@@ -90,6 +90,15 @@ export const darkTheme = {
     badge:       7,   // бейджи статусов
   },
 
+  // ── Токены онбординга ────────────────────────────────────────────────────
+  onboarding: {
+    gradientColors:     ['#000000', '#030e1c', '#062340'] as [string, string, string],
+    glowAccent:         'rgba(29, 143, 214, 0.42)',
+    glowSuccess:        'rgba(76, 175, 125, 0.42)',
+    gridOverlayOpacity: 0.14 as number,
+    startBtnBg:         '#ffffff',
+  },
+
   // ── Типографика (раздел 6 дизайн-системы) ───────────────────────────────
   // Два веса: 400 (обычный) и '500' (полужирный).
   // Регистр — обычный, кроме мелких заголовков-секций.
@@ -142,9 +151,16 @@ export const lightTheme: AppTheme = {
       bar:        '#d63a3f',
     },
   },
-  gradient: darkTheme.gradient,   // градиент одинаковый в обеих темах
-  radius:   darkTheme.radius,
+  gradient:   darkTheme.gradient,
+  radius:     darkTheme.radius,
   typography: darkTheme.typography,
+  onboarding: {
+    gradientColors:     ['#eef7fe', '#d4ebf9', '#bde1f7'] as [string, string, string],
+    glowAccent:         'rgba(29, 143, 214, 0.16)',
+    glowSuccess:        'rgba(76, 175, 125, 0.16)',
+    gridOverlayOpacity: 0.055 as number,
+    startBtnBg:         '#f0f0f4',
+  },
 } as const;
 
 /**
