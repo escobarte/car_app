@@ -118,48 +118,115 @@ export async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
   return _db;
 }
 
+// ─── система миграций ────────────────────────────────────────────────────────
+
+/**
+ * Текущая версия схемы. Увеличивать при каждой новой миграции.
+ * SCHEMA_VERSION === MIGRATIONS.length.
+ */
+const SCHEMA_VERSION = 1;
+
+/**
+ * Шаги миграции: индекс 0 = переход v0→v1, индекс 1 = v1→v2, и т.д.
+ * Правила:
+ *  - только ALTER TABLE / CREATE TABLE / CREATE INDEX и идемпотентные UPDATE
+ *  - никаких DROP TABLE / удаления данных
+ *  - выполняются внутри транзакции; при ошибке — откат и re-throw
+ */
+type Txn = Parameters<Parameters<SQLite.SQLiteDatabase['withExclusiveTransactionAsync']>[0]>[0];
+
+const MIGRATIONS: Array<(txn: Txn) => Promise<void>> = [
+  // ── v0 → v1 : добавляем onboarding_completed ────────────────────────────
+  async (txn) => {
+    // Проверяем, есть ли уже колонка (защита от повторного запуска)
+    const col = await txn.getFirstAsync<{ cid: number }>(
+      `SELECT cid FROM pragma_table_info('app_settings') WHERE name='onboarding_completed';`
+    );
+    if (!col) {
+      await txn.execAsync(
+        `ALTER TABLE app_settings
+         ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0;`
+      );
+    }
+
+    // Считаем пользователя «существующим» если:
+    //   – пробег машины > 0 (вводил пробег, но записей ещё нет), ИЛИ
+    //   – есть хотя бы одна запись в fuel_entry / expense / service_record
+    await txn.runAsync(`
+      UPDATE app_settings
+      SET    onboarding_completed = 1
+      WHERE  id = 1
+        AND  onboarding_completed = 0
+        AND  (
+               EXISTS (SELECT 1 FROM car          WHERE id = 1 AND current_odometer > 0) OR
+               EXISTS (SELECT 1 FROM fuel_entry    LIMIT 1)                               OR
+               EXISTS (SELECT 1 FROM expense       LIMIT 1)                               OR
+               EXISTS (SELECT 1 FROM service_record LIMIT 1)
+             );
+    `);
+  },
+];
+
+/**
+ * Применяет все миграции от текущей user_version до SCHEMA_VERSION.
+ * Каждый шаг выполняется в отдельной транзакции; user_version обновляется
+ * ПОСЛЕ успешного коммита (PRAGMA не транзакционна).
+ * При ошибке любого шага — откат + понятное сообщение в лог + re-throw.
+ */
+async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
+  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version;');
+  let version = row?.user_version ?? 0;
+
+  if (version >= SCHEMA_VERSION) return;   // уже актуальная схема
+
+  for (let v = version; v < SCHEMA_VERSION; v++) {
+    const migrate = MIGRATIONS[v];
+    try {
+      await db.withExclusiveTransactionAsync(async (txn) => {
+        await migrate(txn);
+      });
+    } catch (err) {
+      console.error(`[DB] Миграция v${v}→v${v + 1} откатана:`, err);
+      throw err;   // пробрасываем — bootstrap покажет ошибку
+    }
+    // PRAGMA не участвует в транзакции, ставим после успешного коммита
+    await db.execAsync(`PRAGMA user_version = ${v + 1};`);
+  }
+}
+
 // ─── инициализация ──────────────────────────────────────────────────────────
 
 /**
- * Создаёт таблицы и стартовые данные.
- * Вызывать один раз при старте приложения.
- * Безопасно вызывать повторно — дубликатов не создаст.
+ * Создаёт таблицы, запускает миграции, заполняет стартовые данные.
+ * Вызывать один раз при старте. Безопасно повторно — дубликатов не создаст.
  *
- * @param deviceLanguage — язык телефона ('ru' | 'en').
- *   Используется только при ПЕРВОМ запуске для записи в APP_SETTINGS.
- *   На последующих запусках INSERT OR IGNORE эту строку пропускает.
+ * @param deviceLanguage — язык телефона; используется только при первом запуске.
  */
 export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru', isClean = false): Promise<void> {
   const db = await openDatabase();
 
-  // 1. Создаём все таблицы
+  // 1. Создаём таблицы (IF NOT EXISTS — идемпотентно)
   for (const sql of ALL_SCHEMAS) {
     await db.execAsync(sql);
   }
 
-  // 1b. Миграция: добавляем onboarding_completed (существующие установки)
-  try {
-    await db.execAsync(
-      `ALTER TABLE app_settings ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0;`
-    );
-  } catch {
-    // Колонка уже есть — ошибка ожидаема, игнорируем
-  }
+  // 2. Миграции схемы (до чтения onboarding_completed и вставки данных)
+  await runMigrations(db);
 
-  // 2. Стартовая запись машины (id = 1, вставляется только при первом запуске)
+  // 3. Стартовая запись машины (id = 1, только при первом запуске)
   await db.runAsync(
     `INSERT OR IGNORE INTO car (id, name, current_odometer, fuel_unit, currency)
      VALUES (1, 'Моя машина', 0, 'литр', 'MDL');`
   );
 
-  // 3. Стартовые настройки (id = 1) — язык берётся с устройства при первом запуске
+  // 4. Стартовые настройки (id = 1) — язык берётся с устройства
   await db.runAsync(
     `INSERT OR IGNORE INTO app_settings (id, language, theme, notifications_enabled)
      VALUES (1, ?, 'dark', 1);`,
     deviceLanguage
   );
 
-  // 4. Встроенные категории (12 штук)
+  // 5. Встроенные категории (12 штук)
   for (const cat of BUILTIN_CATEGORIES) {
     await db.runAsync(
       `INSERT OR IGNORE INTO category (key, name, icon, is_builtin)
@@ -169,7 +236,7 @@ export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru', isClean =
     );
   }
 
-  // 5. Стартовые регламенты — только для варианта data; clean стартует пустым
+  // 6. Стартовые регламенты — только для варианта data
   if (!isClean) {
     for (const r of REMINDER_SEEDS) {
       await db.runAsync(
@@ -181,17 +248,4 @@ export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru', isClean =
       );
     }
   }
-
-  // 6. Отмечаем онбординг завершённым для существующих пользователей (есть записи в БД)
-  await db.runAsync(`
-    UPDATE app_settings
-    SET onboarding_completed = 1
-    WHERE id = 1
-      AND onboarding_completed = 0
-      AND (
-        EXISTS (SELECT 1 FROM fuel_entry    LIMIT 1) OR
-        EXISTS (SELECT 1 FROM expense       LIMIT 1) OR
-        EXISTS (SELECT 1 FROM service_record LIMIT 1)
-      );
-  `);
 }

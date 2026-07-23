@@ -10,6 +10,11 @@
 ---
 
 ## 2026-07-23
+- Миграция БД: версионирование через PRAGMA user_version (SCHEMA_VERSION=1), массив MIGRATIONS с транзакцией на каждый шаг, re-throw при ошибке, user_version ставится после коммита. Критерий «существующего пользователя» расширен: current_odometer > 0 ИЛИ записи в fuel_entry/expense/service_record. Тихий catch удалён.
+- файлы: db/database.ts
+- статус: ждёт проверки на телефоне
+
+## 2026-07-23
 - Онбординг — фаза 1: миграция БД (ALTER TABLE + auto-complete для существующих), роутинг в _layout.tsx (Redirect + context completeOnboarding/resetOnboarding), i18n-ключи namespace onboarding (RU+EN), кнопка «Показать онбординг заново» в Settings, заглушка app/onboarding.tsx для проверки роутинга. Полная вёрстка 3 экранов — после проверки на телефоне.
 - файлы: db/schema.ts, db/database.ts, db/backup.ts, app/_layout.tsx, app/onboarding.tsx (новый), app/settings.tsx, i18n/locales/ru.ts, i18n/locales/en.ts
 - статус: ждёт проверки на телефоне
