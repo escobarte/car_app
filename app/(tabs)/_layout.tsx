@@ -7,7 +7,7 @@
  * Action Sheet → Заправка / Расход / Обслуживание.
  */
 
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -16,14 +16,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Tabs, router } from 'expo-router';
+import { Tabs, router, usePathname } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
+
+// ─── Порядок вкладок для свайпа (кнопка «+» пропускается) ──────────────────
+const SWIPE_TABS = ['/', '/history', '/service', '/explore'] as const;
 
 // ─── Кнопка «+» в центре таб-бара ──────────────────────────────────────────
 
@@ -138,6 +142,39 @@ export default function TabLayout() {
 
   const [sheetVisible, setSheetVisible] = useState(false);
 
+  // ── Свайп между вкладками ─────────────────────────────────────────────────
+  const pathname = usePathname();
+  // Ref обходит stale-closure в колбэке жеста (жест создаётся один раз)
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
+
+  const swipeGesture = useMemo(() =>
+    Gesture.Pan()
+      // Активируется только при чётком горизонтальном движении
+      .activeOffsetX([-25, 25])
+      // Отменяется при вертикальном смещении > 15 px (не мешает скроллу и Swipeable)
+      .failOffsetY([-15, 15])
+      // Колбэк выполняется в JS-потоке — можно напрямую вызывать router
+      .runOnJS(true)
+      .onEnd(({ translationX, velocityX }) => {
+        // Порог: либо 50 px смещения, либо быстрый свайп (500 px/s)
+        if (Math.abs(translationX) < 50 && Math.abs(velocityX) < 500) return;
+        const cur = pathnameRef.current;
+        const idx = SWIPE_TABS.findIndex(p =>
+          p === '/' ? cur === '/' : cur === p || cur.startsWith(p + '/'),
+        );
+        if (idx === -1) return;
+        if (translationX < 0 && idx < SWIPE_TABS.length - 1) {
+          // Свайп влево → следующая вкладка
+          router.navigate(SWIPE_TABS[idx + 1] as never);
+        } else if (translationX > 0 && idx > 0) {
+          // Свайп вправо → предыдущая вкладка
+          router.navigate(SWIPE_TABS[idx - 1] as never);
+        }
+      }),
+    [], // жест создаётся один раз; актуальный pathname берётся из pathnameRef
+  );
+
   function openSheet() { setSheetVisible(true);  }
   function closeSheet() { setSheetVisible(false); }
 
@@ -167,6 +204,8 @@ export default function TabLayout() {
 
   return (
     <>
+      <GestureDetector gesture={swipeGesture}>
+        <View style={st.gestureRoot}>
       <Tabs
         screenOptions={{
           headerShown:             false,
@@ -246,6 +285,8 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
+        </View>
+      </GestureDetector>
 
       {/* Action Sheet — над всем UI, включая таб-бар */}
       <ActionSheet
@@ -261,6 +302,9 @@ export default function TabLayout() {
 // ─── Стили ──────────────────────────────────────────────────────────────────
 
 const st = StyleSheet.create({
+  // Обёртка GestureDetector — занимает весь экран
+  gestureRoot: { flex: 1 },
+
   // Контейнер «+» — раскрывается на всю ячейку таб-бара только для центровки;
   // не ловит pointer-события (см. pointerEvents="box-none" в JSX).
   addOuter: {
