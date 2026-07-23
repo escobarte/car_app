@@ -2,11 +2,11 @@ const IS_CLEAN = process.env.APP_VARIANT === 'clean';
 
 /** @type {import('expo/config').ExpoConfig} */
 module.exports = {
-  name:        IS_CLEAN ? 'Авто (чистый)' : 'Авто',
+  name:        IS_CLEAN ? 'MyCarLedger (clean)' : 'MyCarLedger',
   slug:        'car_app',
   version:     '1.0.0',
   orientation: 'portrait',
-  icon:        IS_CLEAN ? './assets/icon-clean.png' : './assets/icon-data.png',
+  icon:        './assets/icon.png',
   scheme:      'carapp',
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
@@ -20,10 +20,8 @@ module.exports = {
     // Суффикс .clean добавляется плагином withAndroidSigning через applicationIdSuffix.
     package: 'com.escobarte.autoapp',
     adaptiveIcon: {
-      foregroundImage: IS_CLEAN
-        ? './assets/icon-clean-foreground.png'
-        : './assets/icon-data-foreground.png',
-      backgroundColor: IS_CLEAN ? '#1c1c22' : '#1a8fd6',
+      foregroundImage: './assets/adaptive-icon-foreground.png',
+      backgroundImage: './assets/adaptive-icon-background.png',
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
@@ -39,7 +37,7 @@ module.exports = {
     [
       'expo-splash-screen',
       {
-        image:           './assets/images/splash-icon.png',
+        image:           './assets/splash-icon.png',
         imageWidth:      200,
         resizeMode:      'contain',
         backgroundColor: '#ffffff',

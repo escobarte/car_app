@@ -227,3 +227,38 @@ numberOfLines={1} по правилам docs/дизайн_система.md §8.
 
 Цвета через объект темы, текст через t() (RU+EN), хардкод запрещён.
 Git не трогай. Запиши в docs/CHANGELOG_work.md.
+---
+Промпт 9 — «Название и иконка приложения»
+
+Две правки конфигурации приложения.
+
+1) Название приложения: MyCarLedger
+Меняем везде, где отображается имя: app.config.js (name, slug при
+необходимости), заголовок под иконкой на телефоне.
+applicationId НЕ трогай — иначе APK не встанет поверх текущего
+и я потеряю данные.
+Суффикс '.clean' для clean-варианта должен сохраниться.
+
+2) Иконки. В assets/images/ лежат новые файлы:
+- icon.png (1024x1024)
+- adaptive-icon-foreground.png (1024x1024, прозрачный фон)
+- adaptive-icon-background.png (1024x1024)
+- splash-icon.png
+- play-store-icon-512.png
+- feature-graphic-1024x500.png
+
+Пропиши в app.config.js:
+- icon → assets/images/icon.png
+- android.adaptiveIcon.foregroundImage → adaptive-icon-foreground.png
+- android.adaptiveIcon.backgroundImage → adaptive-icon-background.png
+- splash / expo-splash-screen плагин → splash-icon.png
+
+play-store-icon-512 и feature-graphic в конфиг НЕ прописываются —
+они загружаются вручную в консоль Google Play. Оставь их в папке.
+
+Проверь фактические имена файлов в assets/images/ и подставь реальные,
+если отличаются от перечисленных.
+
+Скажи, требуется ли prebuild — думаю да, иконки вшиваются в нативный слой.
+
+Git не трогай. Запиши в docs/CHANGELOG_work.md.

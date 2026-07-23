@@ -10,6 +10,11 @@
 ---
 
 ## 2026-07-23
+- Название приложения → MyCarLedger (clean-вариант: MyCarLedger (clean)), slug и applicationId не изменены. Иконки прописаны из assets/: icon.png, adaptive-icon-foreground.png, adaptive-icon-background.png (вместо backgroundColor), splash-icon.png. play-store-icon-512 и feature-graphic в конфиг не вносятся.
+- файлы: app.config.js
+- статус: ждёт проверки на телефоне
+
+## 2026-07-23
 - Локализация вкладок Статистики (ru): tabFuel «Заправки», tabExpenses «Затраты», tabConsumption «Расход л/100км». Название машины на дашборде: третья строка в шапке под пробегом, стиль odoLabel, numberOfLines={1}, скрывается если пустое, обновляется при возврате из Settings.
 - файлы: i18n/locales/ru.ts, app/(tabs)/index.tsx
 - статус: ждёт проверки на телефоне
