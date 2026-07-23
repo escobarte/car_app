@@ -107,6 +107,11 @@ export default function SettingsScreen() {
   const [notifEnabled, setNotifEnabled] = useState(true);
   const [backupState,  setBackupState]  = useState<'idle' | 'working' | 'done' | 'error'>('idle');
 
+  // Редактирование названия машины
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [nameInput,     setNameInput]     = useState('');
+  const [nameError,     setNameError]     = useState('');
+
   // Редактирование пробега
   const [showOdoModal, setShowOdoModal] = useState(false);
   const [odoInput,     setOdoInput]     = useState('');
@@ -122,6 +127,24 @@ export default function SettingsScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  function openNameModal() {
+    setNameInput(carName);
+    setNameError('');
+    setShowNameModal(true);
+  }
+
+  async function handleNameSave() {
+    const trimmed = nameInput.trim();
+    if (!trimmed) { setNameError(t('settings.carNameError')); return; }
+    try {
+      await carRepo.updateCar({ name: trimmed });
+      setCarName(trimmed);
+      setShowNameModal(false);
+    } catch (e) {
+      console.error('[Settings] updateCar name', e);
+    }
+  }
 
   function openOdoModal() {
     setOdoInput('');
@@ -274,7 +297,7 @@ export default function SettingsScreen() {
         {/* ── МАШИНА ─────────────────────────────────────────────────────── */}
         <SectionHeader label={t('settings.sectionCar')} colors={colors} />
         <View style={s.card}>
-          <NavRow label={t('settings.carName')}    value={carName}                              isLast={false} colors={colors} radius={radius} />
+          <NavRow label={t('settings.carName')}    value={carName}   onPress={openNameModal}   isLast={false} colors={colors} radius={radius} />
           <NavRow label={t('settings.odometer')}   value={`${odometer} ${t('common.km')}`}      isLast={false} colors={colors} radius={radius} onPress={openOdoModal} />
           <NavRow label={t('settings.categories')} onPress={() => router.push('/categories' as never)} isLast colors={colors} radius={radius} />
         </View>
@@ -323,6 +346,52 @@ export default function SettingsScreen() {
 
         <View style={s.bottomPad} />
       </ScrollView>
+
+      {/* ── Модалка редактирования названия машины ──────────────────────── */}
+      <Modal
+        visible={showNameModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowNameModal(false)}
+        statusBarTranslucent
+        navigationBarTranslucent
+      >
+        <KeyboardAvoidingView
+          style={s.odoOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={s.odoSheet}>
+            <Text style={s.odoTitle}>{t('settings.editCarNameTitle')}</Text>
+            <TextInput
+              style={[s.odoInput, nameError ? s.odoInputError : undefined]}
+              value={nameInput}
+              onChangeText={(v) => { setNameInput(v); if (nameError) setNameError(''); }}
+              placeholder={carName}
+              placeholderTextColor={colors.textWeak}
+              maxLength={40}
+              autoFocus
+              selectionColor={colors.accent}
+            />
+            {!!nameError && <Text style={s.odoError}>{nameError}</Text>}
+            <View style={s.odoActions}>
+              <TouchableOpacity
+                style={[s.odoBtn, { borderColor: colors.border }]}
+                onPress={() => setShowNameModal(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.odoBtnText, { color: colors.textSecondary }]}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.odoBtn, { borderColor: colors.borderAccent, backgroundColor: colors.activeCard }]}
+                onPress={handleNameSave}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.odoBtnText, { color: colors.accent }]}>{t('common.save')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* ── Модалка редактирования пробега ─────────────────────────────── */}
       <Modal

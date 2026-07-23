@@ -233,6 +233,8 @@ const en: TranslationKeys = {
     importData:          'Import data',
     categories:          'Expense categories',
     editOdometerTitle:   'New odometer, km',
+    editCarNameTitle:    'Car name',
+    carNameError:        'Name cannot be empty',
   },
 
   notifications: {

@@ -45,6 +45,7 @@ import {
 } from '@/utils/reminders';
 import MarkDoneSheet from '@/components/MarkDoneSheet';
 import ReminderDetailModal from '@/components/ReminderDetailModal';
+import SettingsGearBtn from '@/components/SettingsGearBtn';
 
 // ─── Компонент ───────────────────────────────────────────────────────────────
 
@@ -199,6 +200,7 @@ export default function ServiceScreen() {
         {/* ── Шапка ──────────────────────────────────────────────────────── */}
         <View style={s.topRow}>
           <Text style={s.screenTitle}>{t('service.title')}</Text>
+          <SettingsGearBtn />
         </View>
 
         {/* ── Список регламентов ─────────────────────────────────────────── */}
@@ -376,7 +378,10 @@ function makeStyles(th: AppTheme, topInset: number) {
 
     // ── Шапка ────────────────────────────────────────────────────────────────
     topRow: {
-      marginBottom: 20,
+      flexDirection:  'row',
+      justifyContent: 'space-between',
+      alignItems:     'center',
+      marginBottom:   20,
     },
     screenTitle: {
       color: colors.textPrimary,

@@ -32,6 +32,7 @@ import { formatMoney } from '@/constants/currencies';
 import { resolveIcon } from '@/utils/icons';
 import DonutByMonth from '@/components/DonutByMonth';
 import DashStatModal, { StatRow, StatItem } from '@/components/DashStatModal';
+import SettingsGearBtn from '@/components/SettingsGearBtn';
 import {
   carRepo, fuelRepo, expenseRepo, categoryRepo,
   Car, FuelEntry, Expense, Category,
@@ -522,7 +523,10 @@ export default function StatsScreen() {
       showsVerticalScrollIndicator={false}
     >
       {/* ── Заголовок ─────────────────────────────────────────────────────── */}
-      <Text style={s.screenTitle}>{t('stats.title')}</Text>
+      <View style={s.titleRow}>
+        <Text style={s.screenTitle}>{t('stats.title')}</Text>
+        <SettingsGearBtn />
+      </View>
 
       {/* ── Переключатель-таблетки ─────────────────────────────────────────── */}
       <View style={s.pillsRow}>
@@ -908,10 +912,15 @@ function makeStyles(th: AppTheme, topInset: number) {
     loadingText: { color: colors.textSecondary, ...typography.cardText },
 
     // ── Заголовок ──────────────────────────────────────────────────────────────
+    titleRow: {
+      flexDirection:  'row',
+      justifyContent: 'space-between',
+      alignItems:     'center',
+      marginBottom:   20,
+    },
     screenTitle: {
-      color:        colors.textPrimary,
+      color: colors.textPrimary,
       ...typography.screenTitle,
-      marginBottom: 20,
     },
 
     // ── Переключатель-таблетки ─────────────────────────────────────────────────

@@ -33,6 +33,7 @@ import {
   FuelEntry, Expense, ServiceRecord, Category, Car,
 } from '@/db';
 import RecordDetailModal from '@/components/RecordDetailModal';
+import SettingsGearBtn from '@/components/SettingsGearBtn';
 
 // ─── Типы ──────────────────────────────────────────────────────────────────
 
@@ -521,7 +522,7 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
             <View style={{ width: 24 }} />
           )}
           <Text style={s.headerTitle}>{t('history.title')}</Text>
-          <View style={{ width: 24 }} />
+          <SettingsGearBtn />
         </View>
 
         <View style={s.pills}>
