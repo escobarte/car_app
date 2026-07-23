@@ -210,6 +210,14 @@ const ru = {
     metricMin:         'Минимум',
     metricMax:         'Максимум',
     donutMonthTitle:   'Заправки: {{month}}',
+    expMetricAvg:      'Средний в месяц',
+    expMetricTotal:    'Всего за период',
+    expMetricMin:      'Минимальный месяц',
+    expMetricMax:      'Максимальный месяц',
+    catModalTotal:     'Сумма за период',
+    catModalCount:     'Записей',
+    catModalShare:     'Доля в расходах',
+    catModalRecords:   'Записи',
   },
 
   // ── Настройки (Этап 9) ───────────────────────────────────────────────────

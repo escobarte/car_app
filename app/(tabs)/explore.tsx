@@ -31,6 +31,7 @@ import { useAppTheme } from '@/contexts/theme-context';
 import { formatMoney } from '@/constants/currencies';
 import { resolveIcon } from '@/utils/icons';
 import DonutByMonth from '@/components/DonutByMonth';
+import DashStatModal, { StatRow, StatItem } from '@/components/DashStatModal';
 import {
   carRepo, fuelRepo, expenseRepo, categoryRepo,
   Car, FuelEntry, Expense, Category,
@@ -225,11 +226,16 @@ export default function StatsScreen() {
   const [maxOdoMap, setMaxOdoMap] = useState<Record<string, number>>({});
   const [consStats, setConsStats] = useState<ConsStats | null>(null);
   const [catStats,  setCatStats]  = useState<CatStat[]>([]);
-  const [allFuel,   setAllFuel]   = useState<FuelEntry[]>([]);
-  const [loading,   setLoading]   = useState(true);
+  const [allFuel,      setAllFuel]      = useState<FuelEntry[]>([]);
+  const [allExpenses,  setAllExpenses]  = useState<Expense[]>([]);
+  const [loading,      setLoading]      = useState(true);
 
   // Выбранный сектор donut («Доля трат по месяцам»)
   const [selectedDonutKey, setSelectedDonutKey] = useState<string | null>(null);
+
+  // Выбранная категория (модалка деталей)
+  const [selCat,       setSelCat]       = useState<CatStat | null>(null);
+  const [showCatModal, setShowCatModal] = useState(false);
 
   // ── Загрузка ───────────────────────────────────────────────────────────────
   useFocusEffect(
@@ -252,6 +258,7 @@ export default function StatsScreen() {
         setConsStats(buildConsStats(fuel, MONTHS));
         setCatStats(buildCatStats(expenses, cats, MONTHS));
         setAllFuel(fuel);
+        setAllExpenses(expenses);
         setLoading(false);
       })().catch(console.error);
       return () => { active = false; };
@@ -265,6 +272,22 @@ export default function StatsScreen() {
       .filter(f => f.date.startsWith(selectedDonutKey))
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [selectedDonutKey, allFuel]);
+
+  // ── Записи выбранной категории для модалки ──────────────────────────────────
+  const catModalRecords = useMemo<Expense[]>(() => {
+    if (!selCat) return [];
+    return allExpenses
+      .filter(e => e.category_id === selCat.cat.id && MONTHS.includes(e.date.slice(0, 7)))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [selCat, allExpenses, MONTHS]);
+
+  // ── Метрики расходов за период ───────────────────────────────────────────────
+  const expMetrics = useMemo(() => {
+    const vals = MONTHS.map(m => expMap[m] ?? 0).filter(v => v > 0);
+    if (vals.length === 0) return null;
+    const total = vals.reduce((s, v) => s + v, 0);
+    return { total, avg: total / vals.length, min: Math.min(...vals), max: Math.max(...vals) };
+  }, [expMap, MONTHS]);
 
   // ── Данные текущей вкладки ─────────────────────────────────────────────────
   const chartData = useMemo(() => {
@@ -565,6 +588,32 @@ export default function StatsScreen() {
         </View>
       )}
 
+      {/* ── Метрики расходов 2×2 (только «Расходы») ────────────────────────── */}
+      {activeTab === 'expenses' && expMetrics && (
+        <View style={s.metricsGrid}>
+          <View style={s.metricCell}>
+            <Text style={s.metricLabel}>{t('stats.expMetricAvg')}</Text>
+            <Text style={s.metricValue}>{formatMoney(expMetrics.avg, currCode)}</Text>
+          </View>
+          <View style={s.metricCell}>
+            <Text style={s.metricLabel}>{t('stats.expMetricTotal')}</Text>
+            <Text style={s.metricValue}>{formatMoney(expMetrics.total, currCode)}</Text>
+          </View>
+          <View style={s.metricCell}>
+            <Text style={s.metricLabel}>{t('stats.expMetricMin')}</Text>
+            <Text style={[s.metricValue, { color: colors.statusOk.text }]}>
+              {formatMoney(expMetrics.min, currCode)}
+            </Text>
+          </View>
+          <View style={s.metricCell}>
+            <Text style={s.metricLabel}>{t('stats.expMetricMax')}</Text>
+            <Text style={[s.metricValue, { color: colors.statusDue.text }]}>
+              {formatMoney(expMetrics.max, currCode)}
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* ── Разбивка по категориям (только «Расходы») ──────────────────────── */}
       {activeTab === 'expenses' && (
         <>
@@ -583,9 +632,11 @@ export default function StatsScreen() {
                   : cat.name;
 
                 return (
-                  <View
+                  <TouchableOpacity
                     key={cat.id}
                     style={[s.catRow, idx < catStats.length - 1 && s.catBorder]}
+                    activeOpacity={0.7}
+                    onPress={() => { setSelCat({ cat, total: catTotal }); setShowCatModal(true); }}
                   >
                     {/* Иконка */}
                     <View style={s.catIconWrap}>
@@ -613,7 +664,7 @@ export default function StatsScreen() {
                         />
                       </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -621,6 +672,38 @@ export default function StatsScreen() {
         </>
       )}
     </ScrollView>
+
+    {/* ── Модалка деталей категории ─────────────────────────────────────────── */}
+    {selCat && (() => {
+      const totalPeriod = catStats.reduce((s, cs) => s + cs.total, 0);
+      const pct = totalPeriod > 0 ? Math.round((selCat.total / totalPeriod) * 100) : 0;
+      const catName = selCat.cat.key
+        ? t(`categories.${selCat.cat.key}` as never)
+        : selCat.cat.name;
+      const rows: StatRow[] = [
+        { label: t('stats.catModalTotal'), value: formatMoney(selCat.total, currCode) },
+        { label: t('stats.catModalCount'), value: String(catModalRecords.length) },
+        { label: t('stats.catModalShare'), value: `${pct}%` },
+      ];
+      const items: StatItem[] = catModalRecords.map(e => ({
+        left:  e.date,
+        right: formatMoney(e.amount, currCode),
+        badge: e.description?.trim() || undefined,
+      }));
+      return (
+        <DashStatModal
+          visible={showCatModal}
+          onClose={() => setShowCatModal(false)}
+          title={catName}
+          icon={ionName(selCat.cat.icon)}
+          iconBg={colors.background}
+          iconColor={colors.accent}
+          rows={rows}
+          listTitle={t('stats.catModalRecords')}
+          items={items}
+        />
+      );
+    })()}
     </View>
   );
 }

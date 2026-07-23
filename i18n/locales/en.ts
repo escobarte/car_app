@@ -190,6 +190,14 @@ const en: TranslationKeys = {
     metricMin:         'Minimum',
     metricMax:         'Maximum',
     donutMonthTitle:   'Fuel fill-ups: {{month}}',
+    expMetricAvg:      'Avg. per month',
+    expMetricTotal:    'Total for period',
+    expMetricMin:      'Min month',
+    expMetricMax:      'Max month',
+    catModalTotal:     'Total for period',
+    catModalCount:     'Records',
+    catModalShare:     'Share of expenses',
+    catModalRecords:   'Records',
   },
 
   settings: {
