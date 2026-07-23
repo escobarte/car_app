@@ -549,11 +549,11 @@ export default function StatsScreen() {
                   end={gradient.accent.end}
                   style={[s.pill, s.pillActive]}
                 >
-                  <Text style={[s.pillText, s.pillTextActive]}>{label}</Text>
+                  <Text style={[s.pillText, s.pillTextActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{label}</Text>
                 </LinearGradient>
               ) : (
                 <View style={s.pill}>
-                  <Text style={s.pillText}>{label}</Text>
+                  <Text style={s.pillText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{label}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -565,7 +565,7 @@ export default function StatsScreen() {
       <View style={s.summaryRow}>
         <Text style={s.summaryLabel}>{monthFull(selectedYM, locale)}</Text>
         <View style={s.summaryRight}>
-          <Text style={s.summaryValue}>{selectedText()}</Text>
+          <Text style={s.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{selectedText()}</Text>
           {showTrend && (
             <View style={[s.trendBadge, { backgroundColor: trendClr.background }]}>
               <Ionicons
@@ -726,13 +726,13 @@ export default function StatsScreen() {
         <View style={s.metricsGrid}>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-avg')}>
             <Text style={s.metricLabel}>{t('stats.metricAvg')}</Text>
-            <Text style={s.metricValue}>
+            <Text style={s.metricValue} numberOfLines={1}>
               {consStats.avg > 0 ? `${consStats.avg.toFixed(1)} ${t('stats.lPer100')}` : '—'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-distance')}>
             <Text style={s.metricLabel}>{t('stats.metricDistance')}</Text>
-            <Text style={s.metricValue}>
+            <Text style={s.metricValue} numberOfLines={1}>
               {consStats.distance > 0
                 ? `${consStats.distance.toLocaleString()} ${t('common.km')}`
                 : '—'}
@@ -740,13 +740,13 @@ export default function StatsScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-min')}>
             <Text style={s.metricLabel}>{t('stats.metricMin')}</Text>
-            <Text style={[s.metricValue, { color: colors.statusOk.text }]}>
+            <Text style={[s.metricValue, { color: colors.statusOk.text }]} numberOfLines={1}>
               {consStats.min > 0 ? `${consStats.min.toFixed(1)} ${t('stats.lPer100')}` : '—'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-max')}>
             <Text style={s.metricLabel}>{t('stats.metricMax')}</Text>
-            <Text style={[s.metricValue, { color: colors.statusDue.text }]}>
+            <Text style={[s.metricValue, { color: colors.statusDue.text }]} numberOfLines={1}>
               {consStats.max > 0 ? `${consStats.max.toFixed(1)} ${t('stats.lPer100')}` : '—'}
             </Text>
           </TouchableOpacity>
@@ -758,21 +758,21 @@ export default function StatsScreen() {
         <View style={s.metricsGrid}>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-avg')}>
             <Text style={s.metricLabel}>{t('stats.expMetricAvg')}</Text>
-            <Text style={s.metricValue}>{formatMoney(expMetrics.avg, currCode)}</Text>
+            <Text style={s.metricValue} numberOfLines={1}>{formatMoney(expMetrics.avg, currCode)}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-total')}>
             <Text style={s.metricLabel}>{t('stats.expMetricTotal')}</Text>
-            <Text style={s.metricValue}>{formatMoney(expMetrics.total, currCode)}</Text>
+            <Text style={s.metricValue} numberOfLines={1}>{formatMoney(expMetrics.total, currCode)}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-min')}>
             <Text style={s.metricLabel}>{t('stats.expMetricMin')}</Text>
-            <Text style={[s.metricValue, { color: colors.statusOk.text }]}>
+            <Text style={[s.metricValue, { color: colors.statusOk.text }]} numberOfLines={1}>
               {formatMoney(expMetrics.min, currCode)}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-max')}>
             <Text style={s.metricLabel}>{t('stats.expMetricMax')}</Text>
-            <Text style={[s.metricValue, { color: colors.statusDue.text }]}>
+            <Text style={[s.metricValue, { color: colors.statusDue.text }]} numberOfLines={1}>
               {formatMoney(expMetrics.max, currCode)}
             </Text>
           </TouchableOpacity>

@@ -401,7 +401,7 @@ export default function DashboardScreen() {
           style={s.totalBlock}
         >
           <Text style={s.totalLabel}>{t('dashboard.thisMonth')}</Text>
-          <Text style={s.totalAmount}>{formatMoney(monthlyTotal, currCode)}</Text>
+          <Text style={s.totalAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatMoney(monthlyTotal, currCode)}</Text>
         </LinearGradient>
       </TouchableOpacity>
 
@@ -413,7 +413,7 @@ export default function DashboardScreen() {
           onPress={() => setShowPriceModal(true)}
         >
           <Text style={s.statTitle}>{t('dashboard.avgFuelPrice')}</Text>
-          <Text style={s.statValue}>
+          <Text style={s.statValue} numberOfLines={1}>
             {avgPrice != null ? formatMoney(avgPrice, currCode) : '—'}
           </Text>
           <Text style={s.statSub}>{t('dashboard.perLiter')}</Text>
@@ -425,7 +425,7 @@ export default function DashboardScreen() {
           onPress={() => setShowConsModal(true)}
         >
           <Text style={s.statTitle}>{t('dashboard.avgConsumption')}</Text>
-          <Text style={s.statValue}>
+          <Text style={s.statValue} numberOfLines={1}>
             {avgCons != null ? avgCons.toFixed(1) : '—'}
           </Text>
           <Text style={s.statSub}>{t('dashboard.per100km')}</Text>
@@ -455,7 +455,7 @@ export default function DashboardScreen() {
                     <Text style={s.recentTitle} numberOfLines={1}>{d.title}</Text>
                     <Text style={s.recentSub}>{fmtShortDate(item.data.date)}</Text>
                   </View>
-                  <Text style={[s.recentAmount, { color: d.color }]}>
+                  <Text style={[s.recentAmount, { color: d.color }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                     {formatMoney(d.amount, currCode)}
                   </Text>
                 </TouchableOpacity>

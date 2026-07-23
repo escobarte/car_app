@@ -533,7 +533,7 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
               onPress={() => setFilter(f.key)}
               activeOpacity={0.7}
             >
-              <Text style={[s.pillText, filter === f.key && s.pillTextActive]}>
+              <Text style={[s.pillText, filter === f.key && s.pillTextActive]} numberOfLines={1}>
                 {f.label}
               </Text>
             </TouchableOpacity>
@@ -551,7 +551,7 @@ export default function HistoryList({ showBack = false }: { showBack?: boolean }
                 onPress={() => toggleSort(f)}
                 activeOpacity={0.7}
               >
-                <Text style={[s.sortPillText, active && s.sortPillTextActive]}>
+                <Text style={[s.sortPillText, active && s.sortPillTextActive]} numberOfLines={1}>
                   {f === 'date' ? t('history.sortDate') : t('history.sortAmount')}
                 </Text>
                 {active && (

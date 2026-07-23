@@ -10,6 +10,18 @@
 ---
 
 ## 2026-07-23
+- Аудит адаптивности: исправлены 10 пунктов из раздела §8. NumberOfLines на таблетки фильтров и сортировки, adjustsFontSizeToFit на одиночные суммы (totalAmount, recentAmount, summaryValue), numberOfLines без adjustsFontSizeToFit на ячейки соседних сеток (metricValue, statValue), minHeight вместо height на catCell, minWidth вместо width на symbol валюты.
+- файлы: app/(tabs)/explore.tsx, app/(tabs)/index.tsx, app/add-expense.tsx, app/select-currency.tsx, components/HistoryList.tsx, app/(tabs)/service.tsx
+- статус: ждёт проверки на телефоне
+
+## 2026-07-23
+- Документация: добавлен раздел «8. Адаптивность» в docs/дизайн_система.md. Покрыты правила: целевой диапазон 360 dp+, запрет фиксированной ширины, minHeight вместо height, flex-ряды, adjustsFontSizeToFit для кнопок/таблеток и длинных значений, сетка метрик 2×2 через flexWrap/flexBasis, обязательная проверка на EN-локали. Код не менялся.
+- файлы: docs/дизайн_система.md
+- статус: ждёт проверки на телефоне
+
+---
+
+## 2026-07-23
 - Редактирование названия машины: в Settings → секция МАШИНА добавлен тап по «Название машины» → bottom-sheet модалка с TextInput (maxLength 40, валидация на пустую строку). После сохранения carName обновляется в UI и в БД через carRepo.updateCar({ name }). Название отображается только в Settings — других экранов не затрагивает.
 - Шестерёнка на всех вкладках: создан компонент SettingsGearBtn (один в один по стилю с Дашбордом). Добавлен в История (HistoryList), Обслуживание, Статистика — встаёт на одну линию с заголовком экрана.
 - файлы: components/SettingsGearBtn.tsx (new), app/settings.tsx, components/HistoryList.tsx, app/(tabs)/service.tsx, app/(tabs)/explore.tsx, i18n/locales/ru.ts, i18n/locales/en.ts

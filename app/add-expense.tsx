@@ -447,7 +447,7 @@ function makeStyles(th: AppTheme) {
       marginBottom:  4,
     },
     catCell: {
-      height:          76,
+      minHeight:       76,
       backgroundColor: colors.surface,
       borderRadius:    radius.card,
       borderWidth:     1,

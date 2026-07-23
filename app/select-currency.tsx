@@ -183,7 +183,7 @@ function makeStyles(th: AppTheme) {
     rowLast: { borderBottomWidth: 0 },
 
     symbol: {
-      width:      48,
+      minWidth:   48,
       color:      colors.accent,
       fontSize:   17,
       fontWeight: '500',

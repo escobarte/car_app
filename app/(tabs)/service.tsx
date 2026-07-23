@@ -272,7 +272,7 @@ export default function ServiceScreen() {
                       end={gradient.accent.end}
                       style={s.doneBtn}
                     >
-                      <Text style={s.doneBtnText}>{t('service.doneBtn')}</Text>
+                      <Text style={s.doneBtnText} numberOfLines={1}>{t('service.doneBtn')}</Text>
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
