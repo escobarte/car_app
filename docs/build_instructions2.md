@@ -25,7 +25,9 @@ grep -n "applicationId" android/app/build.gradle
 
 bash
 cd android && ./gradlew assembleRelease && cd ..
-cp android/app/build/outputs/apk/release/app-release.apk ~/apk_clean.apk
+mv android/app/build/outputs/apk/release/app-release.apk /mnt/c/Users/Admin/OneDrive/car_apk/Ver_4_export_solving/apk_clean-v$date.apk
+
+mv android/app/build/outputs/apk/release/app-release.apk /mnt/c/Users/Admin/OneDrive/car_apk/Ver_4_export_solving/apk_clean-v$(date +"%Y-%m-%d_%H-%M-%S").apk
 
 Три правила: всегда --clean, сразу после него restore_signing.sh, и grep до gradlew. Имя APK — без -unsigned.
 
