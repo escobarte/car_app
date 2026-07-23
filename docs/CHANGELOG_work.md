@@ -10,6 +10,11 @@
 ---
 
 ## 2026-07-23
+- Локализация вкладок Статистики (ru): tabFuel «Заправки», tabExpenses «Затраты», tabConsumption «Расход л/100км». Название машины на дашборде: третья строка в шапке под пробегом, стиль odoLabel, numberOfLines={1}, скрывается если пустое, обновляется при возврате из Settings.
+- файлы: i18n/locales/ru.ts, app/(tabs)/index.tsx
+- статус: ждёт проверки на телефоне
+
+## 2026-07-23
 - Аудит адаптивности: исправлены 10 пунктов из раздела §8. NumberOfLines на таблетки фильтров и сортировки, adjustsFontSizeToFit на одиночные суммы (totalAmount, recentAmount, summaryValue), numberOfLines без adjustsFontSizeToFit на ячейки соседних сеток (metricValue, statValue), minHeight вместо height на catCell, minWidth вместо width на symbol валюты.
 - файлы: app/(tabs)/explore.tsx, app/(tabs)/index.tsx, app/add-expense.tsx, app/select-currency.tsx, components/HistoryList.tsx, app/(tabs)/service.tsx
 - статус: ждёт проверки на телефоне

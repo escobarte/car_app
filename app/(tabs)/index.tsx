@@ -265,6 +265,7 @@ export default function DashboardScreen() {
   const currCode   = car?.currency ?? '';
   const dateLabel  = useMemo(() => formatCurrentDate(locale), [locale]);
   const odometer   = car?.current_odometer.toLocaleString() ?? '—';
+  const carName    = car?.name ?? '';
 
   // ── Отображение строки транзакции ──────────────────────────────────────────
   // Возвращает иконку, цвет акцента и краткое описание для строки.
@@ -381,6 +382,9 @@ export default function DashboardScreen() {
           <Text style={s.odoLabel}>
             {t('dashboard.odometer')}: {odometer} {t('common.km')}
           </Text>
+          {!!carName && (
+            <Text style={s.odoLabel} numberOfLines={1}>{carName}</Text>
+          )}
         </View>
         <TouchableOpacity
           style={s.gearBtn}

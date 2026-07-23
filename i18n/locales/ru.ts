@@ -205,9 +205,9 @@ const ru = {
   // ── Статистика (Этап 8) ──────────────────────────────────────────────────
   stats: {
     title:             'Статистика',
-    tabFuel:           'Топливо',
-    tabExpenses:       'Расходы',
-    tabConsumption:    'Расход (л/100)',
+    tabFuel:           'Заправки',
+    tabExpenses:       'Затраты',
+    tabConsumption:    'Расход л/100км',
     noData:            'Нет данных',
     totalLabel:        'Итого за 6 мес.',
     avgConsLabel:      'Средний расход',
