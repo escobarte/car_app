@@ -27,12 +27,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
-import { reminderRepo } from '@/db';
+import { reminderRepo, carRepo, settingsRepo } from '@/db';
+import DashStatModal, { StatRow } from '@/components/DashStatModal';
 
 type ReminderType = 'mileage' | 'time';
 
 export default function AddReminderScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const th = useAppTheme();
   const { colors, radius, typography, gradient } = th;
@@ -58,6 +59,8 @@ export default function AddReminderScreen() {
   }>({});
   const [saving,      setSaving]      = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(isEdit);
+  const [confirmRows, setConfirmRows] = useState<StatRow[]>([]);
+  const [confirmTitle, setConfirmTitle] = useState('');
 
   // ── Загрузка данных при редактировании ────────────────────────────────────
   useEffect(() => {
@@ -130,11 +133,77 @@ export default function AddReminderScreen() {
           warn_before:   wb,
         });
       }
-      router.back();
+
+      // ── Модалка-подтверждение ────────────────────────────────────────────
+      const [car, settings] = await Promise.all([
+        carRepo.getCar().catch(() => null),
+        settingsRepo.getSettings().catch(() => null),
+      ]);
+      const notifOn   = settings?.notifications_enabled === 1;
+      const locale    = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
+      const currentOdo = car?.current_odometer ?? 0;
+
+      const rows: StatRow[] = [];
+
+      rows.push({
+        label: t('addReminder.confirmInterval'),
+        value: type === 'mileage'
+          ? t('addReminder.confirmEveryKm',   { n: iv.toLocaleString() })
+          : t('addReminder.confirmEveryDays', { n: String(iv) }),
+      });
+
+      rows.push({
+        label: t('addReminder.confirmWarn'),
+        value: type === 'mileage'
+          ? t('addReminder.confirmWarnKm',   { n: wb.toLocaleString() })
+          : t('addReminder.confirmWarnDays', { n: String(wb) }),
+      });
+
+      if (type === 'mileage') {
+        const warnOdo = currentOdo + iv - wb;
+        rows.push({
+          label: t('addReminder.confirmFireLabel'),
+          value: t('addReminder.confirmFireOdo', { n: warnOdo.toLocaleString() }),
+        });
+      } else {
+        // Вычисляем дату первого уведомления относительно сегодня
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const fireDays = iv - wb;
+        const fireBase = fireDays > 0
+          ? new Date(todayStart.getTime() + fireDays * 86_400_000)
+          : new Date(todayStart);
+        fireBase.setHours(9, 0, 0, 0);
+        if (fireBase.getTime() <= Date.now()) {
+          fireBase.setDate(fireBase.getDate() + 1);
+        }
+        const dateStr = fireBase
+          .toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
+          .replace(/\s*г\.\s*$/, '');
+        rows.push({
+          label: t('addReminder.confirmFireLabel'),
+          value: t('addReminder.confirmFireTime', { date: dateStr }),
+        });
+      }
+
+      if (!notifOn) {
+        rows.push({
+          label:      '',
+          value:      t('addReminder.confirmNoNotif'),
+          valueColor: colors.statusDue.text,
+        });
+      }
+
+      setConfirmTitle(name.trim());
+      setConfirmRows(rows);
     } catch (e) {
       console.error('[AddReminder]', e);
       setSaving(false);
     }
+  }
+
+  function handleConfirmClose() {
+    router.back();
   }
 
   // ── Стиль поля ─────────────────────────────────────────────────────────────
@@ -287,6 +356,20 @@ export default function AddReminderScreen() {
           </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* ── Подтверждение сохранения ──────────────────────────────────────── */}
+      <DashStatModal
+        visible={confirmRows.length > 0}
+        onClose={handleConfirmClose}
+        title={confirmTitle}
+        icon="alarm-outline"
+        iconBg={colors.activeCard}
+        iconColor={colors.accent}
+        rows={confirmRows}
+        actionLabel={t('addReminder.confirmOk')}
+        actionIcon="checkmark-circle-outline"
+        onAction={handleConfirmClose}
+      />
     </KeyboardAvoidingView>
   );
 }

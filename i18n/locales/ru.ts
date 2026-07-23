@@ -160,6 +160,17 @@ const ru = {
     errorName:      'Введите название',
     errorInterval:  'Введите интервал',
     errorWarn:      'Введите порог предупреждения',
+    confirmInterval:  'Интервал',
+    confirmEveryKm:   'каждые {{n}} км',
+    confirmEveryDays: 'каждые {{n}} дней',
+    confirmWarn:      'Предупреждение',
+    confirmWarnKm:    'за {{n}} км до срока',
+    confirmWarnDays:  'за {{n}} дней до срока',
+    confirmFireLabel: 'Уведомление',
+    confirmFireOdo:   'при пробеге {{n}} км',
+    confirmFireTime:  '{{date}} в 9:00',
+    confirmOk:        'Понятно',
+    confirmNoNotif:   'Уведомления отключены в настройках — push не придёт.',
   },
 
   // ── История (Этап 3) ─────────────────────────────────────────────────────

@@ -142,6 +142,17 @@ const en: TranslationKeys = {
     errorName:      'Enter a name',
     errorInterval:  'Enter an interval',
     errorWarn:      'Enter warn threshold',
+    confirmInterval:  'Interval',
+    confirmEveryKm:   'every {{n}} km',
+    confirmEveryDays: 'every {{n}} days',
+    confirmWarn:      'Alert',
+    confirmWarnKm:    '{{n}} km before due',
+    confirmWarnDays:  '{{n}} days before due',
+    confirmFireLabel: 'Notification',
+    confirmFireOdo:   'at odometer {{n}} km',
+    confirmFireTime:  '{{date}} at 9:00',
+    confirmOk:        'Got it',
+    confirmNoNotif:   'Notifications are disabled in Settings — no push will arrive.',
   },
 
   history: {

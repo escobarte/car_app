@@ -45,6 +45,7 @@ type Props = {
   listTitle?:   string;   // заголовок секции со списком
   items?:       StatItem[];
   actionLabel?: string;
+  actionIcon?:  React.ComponentProps<typeof Ionicons>['name'];
   onAction?:    () => void;
 };
 
@@ -52,7 +53,7 @@ type Props = {
 
 export default function DashStatModal({
   visible, onClose, title, icon, iconBg, iconColor,
-  rows, listTitle, items, actionLabel, onAction,
+  rows, listTitle, items, actionLabel, actionIcon, onAction,
 }: Props) {
   const th = useAppTheme();
   const { colors } = th;
@@ -138,7 +139,7 @@ export default function DashStatModal({
                 onPress={onAction}
                 activeOpacity={0.8}
               >
-                <Ionicons name="bar-chart-outline" size={18} color={colors.accent} />
+                <Ionicons name={actionIcon ?? 'bar-chart-outline'} size={18} color={colors.accent} />
                 <Text style={[s.actionText, { color: colors.accent }]}>{actionLabel}</Text>
               </TouchableOpacity>
             )}

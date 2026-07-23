@@ -21,6 +21,7 @@
 
 import { LogBox, Platform } from 'react-native';
 import Constants from 'expo-constants';
+import type { SchedulableTriggerInputTypes } from 'expo-notifications';
 
 import i18n from '@/i18n';
 import { carRepo, reminderRepo, settingsRepo } from '@/db';
@@ -74,14 +75,29 @@ function isExpoGo(): boolean {
 
 // ─── Вспомогательные ────────────────────────────────────────────────────────
 
-const MIN_SECONDS = 65;
-
-function secondsUntil(target: Date): number {
-  return Math.max(MIN_SECONDS, Math.floor((target.getTime() - Date.now()) / 1000));
-}
-
 function notifId(reminderId: number): string {
   return `reminder-${reminderId}`;
+}
+
+/**
+ * Следующее 9:00 утра по местному времени.
+ * Если сегодняшнее 9:00 уже прошло — возвращает завтрашнее.
+ */
+function next9AM(): Date {
+  const d = new Date();
+  d.setHours(9, 0, 0, 0);
+  if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+/**
+ * Возвращает переданную дату с временем 9:00.
+ * Если такой момент уже прошёл — возвращает next9AM().
+ */
+function at9AMOrLater(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(9, 0, 0, 0);
+  return d.getTime() <= Date.now() ? next9AM() : d;
 }
 
 // ─── Публичный API ───────────────────────────────────────────────────────────
@@ -152,12 +168,15 @@ async function ensureAndroidChannel(): Promise<void> {
  * Планирует (или отменяет) локальные уведомления для регламентов.
  * Вызывать при каждом запуске приложения ПОСЛЕ initDatabase().
  *
+ * Все уведомления приходят в 9:00 утра по часовому поясу телефона
+ * (CALENDAR-триггер с hour:9, minute:0).
+ *
  * Стратегия (одно уведомление на регламент):
- *  time ok   → триггер на warnDate
- *  time soon → триггер на dueDate
- *  time due  → через 24 ч (ежедневное напоминание)
- *  mileage ok      → не планируем
- *  mileage soon/due → через 24 ч
+ *  time ok        → CALENDAR на warnDate @ 9:00 (разовый)
+ *  time soon      → CALENDAR на dueDate  @ 9:00 (разовый)
+ *  time due       → CALENDAR повтор каждый день в 9:00
+ *  mileage ok     → не планируем
+ *  mileage soon/due → CALENDAR повтор каждый день в 9:00
  */
 export async function scheduleReminderNotifications(): Promise<void> {
   if (isExpoGo()) return;                    // guard ②
@@ -209,6 +228,15 @@ export async function scheduleReminderNotifications(): Promise<void> {
     for (const reminder of sorted) {
       const row = calcReminderRow(reminder, odo, today);
 
+      // Повторяющийся CALENDAR-триггер: каждый день в 9:00
+      const dailyAt9: Parameters<typeof N.scheduleNotificationAsync>[0]['trigger'] = {
+        type:    N.SchedulableTriggerInputTypes.CALENDAR as SchedulableTriggerInputTypes.CALENDAR,
+        hour:    9,
+        minute:  0,
+        second:  0,
+        repeats: true,
+      };
+
       if (reminder.type === 'mileage') {
         if (row.status === 'ok') continue;
         const n    = Math.abs(row.remaining);
@@ -218,7 +246,7 @@ export async function scheduleReminderNotifications(): Promise<void> {
         await N.scheduleNotificationAsync({
           identifier: notifId(reminder.id),
           content: { title: reminder.title, body, data: { reminderId: reminder.id } },
-          trigger: { type: N.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 86_400 },
+          trigger: dailyAt9,
         }).catch(() => {});
         continue;
       }
@@ -229,6 +257,21 @@ export async function scheduleReminderNotifications(): Promise<void> {
       const dueDate  = new Date(lastDate.getTime() + interval * 86_400_000);
       const warnDate = new Date(dueDate.getTime()  - reminder.warn_before * 86_400_000);
 
+      // Разовый CALENDAR-триггер на конкретную дату в 9:00
+      function calendarAt(d: Date): Parameters<NotificationsModule['scheduleNotificationAsync']>[0]['trigger'] {
+        const fire = at9AMOrLater(d);
+        return {
+          type:    N!.SchedulableTriggerInputTypes.CALENDAR as SchedulableTriggerInputTypes.CALENDAR,
+          year:    fire.getFullYear(),
+          month:   fire.getMonth() + 1,
+          day:     fire.getDate(),
+          hour:    9,
+          minute:  0,
+          second:  0,
+          repeats: false,
+        };
+      }
+
       if (row.status === 'ok') {
         await N.scheduleNotificationAsync({
           identifier: notifId(reminder.id),
@@ -237,10 +280,7 @@ export async function scheduleReminderNotifications(): Promise<void> {
             body:  t('notifications.soonDays', { n: reminder.warn_before }),
             data:  { reminderId: reminder.id },
           },
-          trigger: {
-            type:    N.SchedulableTriggerInputTypes.TIME_INTERVAL,
-            seconds: secondsUntil(warnDate),
-          },
+          trigger: calendarAt(warnDate),
         }).catch(() => {});
       } else if (row.status === 'soon') {
         await N.scheduleNotificationAsync({
@@ -250,13 +290,10 @@ export async function scheduleReminderNotifications(): Promise<void> {
             body:  t('notifications.due'),
             data:  { reminderId: reminder.id },
           },
-          trigger: {
-            type:    N.SchedulableTriggerInputTypes.TIME_INTERVAL,
-            seconds: secondsUntil(dueDate),
-          },
+          trigger: calendarAt(dueDate),
         }).catch(() => {});
       } else {
-        // due — уже просрочено
+        // due — уже просрочено, напоминаем каждый день в 9:00
         await N.scheduleNotificationAsync({
           identifier: notifId(reminder.id),
           content: {
@@ -264,10 +301,7 @@ export async function scheduleReminderNotifications(): Promise<void> {
             body:  t('notifications.overdue'),
             data:  { reminderId: reminder.id },
           },
-          trigger: {
-            type:    N.SchedulableTriggerInputTypes.TIME_INTERVAL,
-            seconds: 86_400,
-          },
+          trigger: dailyAt9,
         }).catch(() => {});
       }
     }
