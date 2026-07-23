@@ -361,6 +361,10 @@ const en: TranslationKeys = {
     tip_backup:           'Got a backup? Import it in settings',
     go:                   "Let's go",
     reset_setting:        'Show onboarding again',
+    exit_title:           'Exit the app?',
+    exit_message:         'Setup is not finished',
+    cancel:               'Cancel',
+    exit:                 'Exit',
   },
 
   dbCheck: {

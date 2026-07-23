@@ -92,11 +92,13 @@ export const darkTheme = {
 
   // ── Токены онбординга ────────────────────────────────────────────────────
   onboarding: {
-    gradientColors:     ['#000000', '#030e1c', '#062340'] as [string, string, string],
-    glowAccent:         'rgba(29, 143, 214, 0.42)',
-    glowSuccess:        'rgba(76, 175, 125, 0.42)',
-    gridOverlayOpacity: 0.14 as number,
-    startBtnBg:         '#ffffff',
+    gradientColors:          ['#000000', '#02101f', '#07355c', '#0a4f85'] as [string, string, string, string],
+    glowAccent:              'rgba(29, 143, 214, 0.42)',
+    glowSuccess:             'rgba(76, 175, 125, 0.42)',
+    glowTeal:                'rgba(61, 214, 245, 0.38)',
+    gridOverlayOpacity:      0.15 as number,
+    gridOverlayOpacityInner: 0.07 as number,
+    startBtnBg:              '#ffffff',
   },
 
   // ── Типографика (раздел 6 дизайн-системы) ───────────────────────────────
@@ -155,11 +157,13 @@ export const lightTheme: AppTheme = {
   radius:     darkTheme.radius,
   typography: darkTheme.typography,
   onboarding: {
-    gradientColors:     ['#eef7fe', '#d4ebf9', '#bde1f7'] as [string, string, string],
-    glowAccent:         'rgba(29, 143, 214, 0.16)',
-    glowSuccess:        'rgba(76, 175, 125, 0.16)',
-    gridOverlayOpacity: 0.055 as number,
-    startBtnBg:         '#f0f0f4',
+    gradientColors:          ['#ffffff', '#eaf5fd', '#c9e7f8', '#a9daf5'] as [string, string, string, string],
+    glowAccent:              'rgba(29, 143, 214, 0.16)',
+    glowSuccess:             'rgba(76, 175, 125, 0.16)',
+    glowTeal:                'rgba(61, 214, 245, 0.20)',
+    gridOverlayOpacity:      0.06 as number,
+    gridOverlayOpacityInner: 0.035 as number,
+    startBtnBg:              '#f0f0f4',
   },
 } as const;
 
