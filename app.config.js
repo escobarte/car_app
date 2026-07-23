@@ -2,7 +2,7 @@ const IS_CLEAN = process.env.APP_VARIANT === 'clean';
 
 /** @type {import('expo/config').ExpoConfig} */
 module.exports = {
-  name:        IS_CLEAN ? 'MyCarLedger (clean)' : 'MyCarLedger',
+  name:        'MyCarLedger',
   slug:        'car_app',
   version:     '1.0.0',
   orientation: 'portrait',
