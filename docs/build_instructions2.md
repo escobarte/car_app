@@ -32,3 +32,5 @@ mv android/app/build/outputs/apk/release/app-release.apk /mnt/c/Users/Admin/OneD
 Три правила: всегда --clean, сразу после него restore_signing.sh, и grep до gradlew. Имя APK — без -unsigned.
 
 Оба старых приложения с телефона удали — подпись сменилась, поверх не встанут.
+
+Exit
