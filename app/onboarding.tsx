@@ -36,9 +36,6 @@ export default function OnboardingScreen() {
       <Text style={[s.title, { color: colors.textPrimary }]}>
         {t('onboarding.done_title')}
       </Text>
-      <Text style={[s.sub, { color: colors.textSecondary }]}>
-        Роутинг работает. Полная вёрстка — после проверки.
-      </Text>
       <TouchableOpacity
         style={[s.btn, { backgroundColor: colors.accent }]}
         activeOpacity={0.8}
@@ -54,8 +51,7 @@ export default function OnboardingScreen() {
 
 const s = StyleSheet.create({
   root:    { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
-  title:   { fontSize: 24, fontWeight: '600', marginBottom: 12, textAlign: 'center' },
-  sub:     { fontSize: 15, textAlign: 'center', marginBottom: 40 },
+  title:   { fontSize: 24, fontWeight: '600', marginBottom: 40, textAlign: 'center' },
   btn:     { paddingVertical: 14, paddingHorizontal: 40, borderRadius: 15 },
   btnText: { fontSize: 16, fontWeight: '600' },
 });
