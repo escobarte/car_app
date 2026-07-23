@@ -186,6 +186,14 @@ function buildConsStats(fuel: FuelEntry[], months: string[]): ConsStats {
 
 type CatStat = { cat: Category; total: number };
 
+type MetricModalData = {
+  title:      string;
+  icon:       React.ComponentProps<typeof Ionicons>['name'];
+  rows:       StatRow[];
+  listTitle?: string;
+  items?:     StatItem[];
+};
+
 function buildCatStats(
   expenses: Expense[],
   categories: Category[],
@@ -236,6 +244,9 @@ export default function StatsScreen() {
   // Выбранная категория (модалка деталей)
   const [selCat,       setSelCat]       = useState<CatStat | null>(null);
   const [showCatModal, setShowCatModal] = useState(false);
+
+  // Модалка деталей метрики
+  const [metricModal, setMetricModal] = useState<MetricModalData | null>(null);
 
   // ── Загрузка ───────────────────────────────────────────────────────────────
   useFocusEffect(
@@ -288,6 +299,156 @@ export default function StatsScreen() {
     const total = vals.reduce((s, v) => s + v, 0);
     return { total, avg: total / vals.length, min: Math.min(...vals), max: Math.max(...vals) };
   }, [expMap, MONTHS]);
+
+  // ── Открыть модалку деталей метрики ─────────────────────────────────────────
+  function openMetricModal(key: 'cons-avg' | 'cons-distance' | 'cons-min' | 'cons-max' | 'exp-avg' | 'exp-total' | 'exp-min' | 'exp-max') {
+    const consFills = allFuel
+      .filter(f => MONTHS.includes(f.date.slice(0, 7)) && f.is_full_tank === 1 && f.consumption != null)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const monthData = MONTHS
+      .map(m => ({ ym: m, total: expMap[m] ?? 0 }))
+      .filter(m => m.total > 0);
+
+    switch (key) {
+      case 'cons-avg': {
+        if (!consStats || consFills.length === 0) return;
+        setMetricModal({
+          title: t('stats.metricAvg'),
+          icon:  'speedometer-outline',
+          rows: [
+            { label: t('stats.metricModalFillsCount'), value: String(consFills.length) },
+            { label: t('stats.metricAvg'), value: `${consStats.avg.toFixed(1)} ${t('stats.lPer100')}` },
+          ],
+          listTitle: t('stats.metricModalFillsTitle'),
+          items: consFills.map(f => ({
+            left:  f.date,
+            right: `${f.consumption!.toFixed(1)} ${t('stats.lPer100')}`,
+          })),
+        });
+        break;
+      }
+      case 'cons-distance': {
+        if (!consStats) return;
+        setMetricModal({
+          title: t('stats.metricDistance'),
+          icon:  'navigate-outline',
+          rows: [{
+            label: t('stats.metricDistance'),
+            value: consStats.distance > 0
+              ? `${consStats.distance.toLocaleString()} ${t('common.km')}`
+              : '—',
+          }],
+        });
+        break;
+      }
+      case 'cons-min': {
+        if (!consStats || consFills.length === 0) return;
+        const minFill = consFills.reduce((m, f) => (f.consumption! < m.consumption! ? f : m));
+        setMetricModal({
+          title: t('stats.metricMin'),
+          icon:  'trending-down-outline',
+          rows: [{
+            label:      t('stats.metricMin'),
+            value:      `${consStats.min.toFixed(1)} ${t('stats.lPer100')}`,
+            valueColor: colors.statusOk.text,
+          }],
+          listTitle: t('stats.metricModalFillsTitle'),
+          items: [{
+            left:  minFill.date,
+            right: `${minFill.liters.toFixed(2)} ${t('common.liters')}`,
+            badge: `${minFill.odometer} ${t('common.km')}`,
+          }],
+        });
+        break;
+      }
+      case 'cons-max': {
+        if (!consStats || consFills.length === 0) return;
+        const maxFill = consFills.reduce((m, f) => (f.consumption! > m.consumption! ? f : m));
+        setMetricModal({
+          title: t('stats.metricMax'),
+          icon:  'trending-up-outline',
+          rows: [{
+            label:      t('stats.metricMax'),
+            value:      `${consStats.max.toFixed(1)} ${t('stats.lPer100')}`,
+            valueColor: colors.statusDue.text,
+          }],
+          listTitle: t('stats.metricModalFillsTitle'),
+          items: [{
+            left:  maxFill.date,
+            right: `${maxFill.liters.toFixed(2)} ${t('common.liters')}`,
+            badge: `${maxFill.odometer} ${t('common.km')}`,
+          }],
+        });
+        break;
+      }
+      case 'exp-avg': {
+        if (!expMetrics || monthData.length === 0) return;
+        setMetricModal({
+          title: t('stats.expMetricAvg'),
+          icon:  'wallet-outline',
+          rows: [
+            { label: t('stats.metricModalMonthsCount'), value: String(monthData.length) },
+            { label: t('stats.expMetricAvg'), value: formatMoney(expMetrics.avg, currCode) },
+          ],
+          listTitle: t('stats.metricModalMonthsTitle'),
+          items: monthData.map(m => ({
+            left:  monthFull(m.ym, locale),
+            right: formatMoney(m.total, currCode),
+          })),
+        });
+        break;
+      }
+      case 'exp-total': {
+        if (!expMetrics || monthData.length === 0) return;
+        setMetricModal({
+          title: t('stats.expMetricTotal'),
+          icon:  'calculator-outline',
+          rows: [
+            { label: t('stats.metricModalMonthsCount'), value: String(monthData.length) },
+            { label: t('stats.expMetricTotal'), value: formatMoney(expMetrics.total, currCode) },
+          ],
+          listTitle: t('stats.metricModalMonthsTitle'),
+          items: monthData.map(m => ({
+            left:  monthFull(m.ym, locale),
+            right: formatMoney(m.total, currCode),
+          })),
+        });
+        break;
+      }
+      case 'exp-min': {
+        if (!expMetrics || monthData.length === 0) return;
+        const minM = monthData.reduce((m, d) => (d.total < m.total ? d : m));
+        setMetricModal({
+          title: t('stats.expMetricMin'),
+          icon:  'trending-down-outline',
+          rows: [{
+            label:      t('stats.expMetricMin'),
+            value:      formatMoney(expMetrics.min, currCode),
+            valueColor: colors.statusOk.text,
+          }],
+          listTitle: t('stats.metricModalMonthsTitle'),
+          items: [{ left: monthFull(minM.ym, locale), right: formatMoney(minM.total, currCode) }],
+        });
+        break;
+      }
+      case 'exp-max': {
+        if (!expMetrics || monthData.length === 0) return;
+        const maxM = monthData.reduce((m, d) => (d.total > m.total ? d : m));
+        setMetricModal({
+          title: t('stats.expMetricMax'),
+          icon:  'trending-up-outline',
+          rows: [{
+            label:      t('stats.expMetricMax'),
+            value:      formatMoney(expMetrics.max, currCode),
+            valueColor: colors.statusDue.text,
+          }],
+          listTitle: t('stats.metricModalMonthsTitle'),
+          items: [{ left: monthFull(maxM.ym, locale), right: formatMoney(maxM.total, currCode) }],
+        });
+        break;
+      }
+    }
+  }
 
   // ── Данные текущей вкладки ─────────────────────────────────────────────────
   const chartData = useMemo(() => {
@@ -559,58 +720,58 @@ export default function StatsScreen() {
       {/* ── Метрики расхода 2×2 (только «Расход л/100») ─────────────────────── */}
       {activeTab === 'consumption' && consStats && (
         <View style={s.metricsGrid}>
-          <View style={s.metricCell}>
+          <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-avg')}>
             <Text style={s.metricLabel}>{t('stats.metricAvg')}</Text>
             <Text style={s.metricValue}>
               {consStats.avg > 0 ? `${consStats.avg.toFixed(1)} ${t('stats.lPer100')}` : '—'}
             </Text>
-          </View>
-          <View style={s.metricCell}>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-distance')}>
             <Text style={s.metricLabel}>{t('stats.metricDistance')}</Text>
             <Text style={s.metricValue}>
               {consStats.distance > 0
                 ? `${consStats.distance.toLocaleString()} ${t('common.km')}`
                 : '—'}
             </Text>
-          </View>
-          <View style={s.metricCell}>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-min')}>
             <Text style={s.metricLabel}>{t('stats.metricMin')}</Text>
             <Text style={[s.metricValue, { color: colors.statusOk.text }]}>
               {consStats.min > 0 ? `${consStats.min.toFixed(1)} ${t('stats.lPer100')}` : '—'}
             </Text>
-          </View>
-          <View style={s.metricCell}>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-max')}>
             <Text style={s.metricLabel}>{t('stats.metricMax')}</Text>
             <Text style={[s.metricValue, { color: colors.statusDue.text }]}>
               {consStats.max > 0 ? `${consStats.max.toFixed(1)} ${t('stats.lPer100')}` : '—'}
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
       )}
 
       {/* ── Метрики расходов 2×2 (только «Расходы») ────────────────────────── */}
       {activeTab === 'expenses' && expMetrics && (
         <View style={s.metricsGrid}>
-          <View style={s.metricCell}>
+          <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-avg')}>
             <Text style={s.metricLabel}>{t('stats.expMetricAvg')}</Text>
             <Text style={s.metricValue}>{formatMoney(expMetrics.avg, currCode)}</Text>
-          </View>
-          <View style={s.metricCell}>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-total')}>
             <Text style={s.metricLabel}>{t('stats.expMetricTotal')}</Text>
             <Text style={s.metricValue}>{formatMoney(expMetrics.total, currCode)}</Text>
-          </View>
-          <View style={s.metricCell}>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-min')}>
             <Text style={s.metricLabel}>{t('stats.expMetricMin')}</Text>
             <Text style={[s.metricValue, { color: colors.statusOk.text }]}>
               {formatMoney(expMetrics.min, currCode)}
             </Text>
-          </View>
-          <View style={s.metricCell}>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-max')}>
             <Text style={s.metricLabel}>{t('stats.expMetricMax')}</Text>
             <Text style={[s.metricValue, { color: colors.statusDue.text }]}>
               {formatMoney(expMetrics.max, currCode)}
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -672,6 +833,21 @@ export default function StatsScreen() {
         </>
       )}
     </ScrollView>
+
+    {/* ── Модалка деталей метрики ──────────────────────────────────────────── */}
+    {metricModal && (
+      <DashStatModal
+        visible
+        onClose={() => setMetricModal(null)}
+        title={metricModal.title}
+        icon={metricModal.icon}
+        iconBg={colors.surface}
+        iconColor={colors.accent}
+        rows={metricModal.rows}
+        listTitle={metricModal.listTitle}
+        items={metricModal.items}
+      />
+    )}
 
     {/* ── Модалка деталей категории ─────────────────────────────────────────── */}
     {selCat && (() => {

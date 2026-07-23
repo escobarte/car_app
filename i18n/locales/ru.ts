@@ -229,6 +229,10 @@ const ru = {
     catModalCount:     'Записей',
     catModalShare:     'Доля в расходах',
     catModalRecords:   'Записи',
+    metricModalFillsCount:  'Полных баков',
+    metricModalMonthsCount: 'Месяцев с данными',
+    metricModalFillsTitle:  'Полные баки',
+    metricModalMonthsTitle: 'По месяцам',
   },
 
   // ── Настройки (Этап 9) ───────────────────────────────────────────────────

@@ -209,6 +209,10 @@ const en: TranslationKeys = {
     catModalCount:     'Records',
     catModalShare:     'Share of expenses',
     catModalRecords:   'Records',
+    metricModalFillsCount:  'Full tanks',
+    metricModalMonthsCount: 'Months with data',
+    metricModalFillsTitle:  'Full tanks',
+    metricModalMonthsTitle: 'By month',
   },
 
   settings: {
