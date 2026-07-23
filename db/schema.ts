@@ -82,7 +82,8 @@ export const CREATE_TABLE_APP_SETTINGS = `
     id                    INTEGER PRIMARY KEY NOT NULL,
     language              TEXT    NOT NULL DEFAULT 'ru',
     theme                 TEXT    NOT NULL DEFAULT 'dark',
-    notifications_enabled INTEGER NOT NULL DEFAULT 1
+    notifications_enabled INTEGER NOT NULL DEFAULT 1,
+    onboarding_completed  INTEGER NOT NULL DEFAULT 0
   );
 `;
 

@@ -78,6 +78,7 @@ export type AppSettings = {
   language: 'ru' | 'en';
   theme: 'dark' | 'light';
   notifications_enabled: 0 | 1;
+  onboarding_completed: 0 | 1;
 };
 
 // ─── встроенные категории (раздел 7.1 ТЗ) ──────────────────────────────────
@@ -136,6 +137,15 @@ export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru', isClean =
     await db.execAsync(sql);
   }
 
+  // 1b. Миграция: добавляем onboarding_completed (существующие установки)
+  try {
+    await db.execAsync(
+      `ALTER TABLE app_settings ADD COLUMN onboarding_completed INTEGER NOT NULL DEFAULT 0;`
+    );
+  } catch {
+    // Колонка уже есть — ошибка ожидаема, игнорируем
+  }
+
   // 2. Стартовая запись машины (id = 1, вставляется только при первом запуске)
   await db.runAsync(
     `INSERT OR IGNORE INTO car (id, name, current_odometer, fuel_unit, currency)
@@ -171,4 +181,17 @@ export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru', isClean =
       );
     }
   }
+
+  // 6. Отмечаем онбординг завершённым для существующих пользователей (есть записи в БД)
+  await db.runAsync(`
+    UPDATE app_settings
+    SET onboarding_completed = 1
+    WHERE id = 1
+      AND onboarding_completed = 0
+      AND (
+        EXISTS (SELECT 1 FROM fuel_entry    LIMIT 1) OR
+        EXISTS (SELECT 1 FROM expense       LIMIT 1) OR
+        EXISTS (SELECT 1 FROM service_record LIMIT 1)
+      );
+  `);
 }

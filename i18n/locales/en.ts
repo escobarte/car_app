@@ -343,6 +343,26 @@ const en: TranslationKeys = {
     testNotifBody:  'If you see this — push works!',
   },
 
+  onboarding: {
+    welcome_slogan_line1: 'Your car.',
+    welcome_slogan_line2: 'Your rules.',
+    start:                'Get started',
+    step_of:              'STEP 1 OF 2',
+    car_title:            'Your car',
+    car_subtitle:         'You can change this later in settings',
+    name_label:           'Name',
+    name_placeholder:     'My car',
+    odometer_label:       'Current odometer, km',
+    next:                 'Next',
+    done_title:           'All set',
+    done_subtitle:        'Time to start tracking',
+    tip_add:              'The «+» button — fuel, expense, service',
+    tip_service:          'Schedules are ready — log your last service',
+    tip_backup:           'Got a backup? Import it in settings',
+    go:                   "Let's go",
+    reset_setting:        'Show onboarding again',
+  },
+
   dbCheck: {
     title:             '🗄 Database Check',
     sectionCar:        'CAR',

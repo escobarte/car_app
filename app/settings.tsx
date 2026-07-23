@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme, useThemeCtx } from '@/contexts/theme-context';
 import { settingsRepo, carRepo } from '@/db';
+import { useBootstrap } from '@/app/_layout';
 import { scheduleReminderNotifications } from '@/notifications/engine';
 import { exportDatabase, importDatabase } from '@/db/backup';
 
@@ -97,6 +98,7 @@ export default function SettingsScreen() {
   const { t } = useTranslation();
   const th = useAppTheme();
   const { isDark, setDark } = useThemeCtx();
+  const { resetOnboarding } = useBootstrap();
   const { colors, radius, typography } = th;
   const s = useMemo(() => makeStyles(th), [th]);
 
@@ -240,6 +242,12 @@ export default function SettingsScreen() {
 
   const langLabel = language === 'ru' ? 'RU' : 'EN';
 
+  async function handleResetOnboarding() {
+    await settingsRepo.updateSettings({ onboarding_completed: 0 });
+    resetOnboarding();
+    router.replace('/onboarding' as never);
+  }
+
   // TEMP: удалить после проверки push ────────────────────────────────────────
   async function handleTestNotification() {
     try {
@@ -338,6 +346,7 @@ export default function SettingsScreen() {
         {/* TEMP: удалить после проверки push ─────────────────────────────── */}
         <SectionHeader label={t('debug.sectionTitle')} colors={{ ...colors, textWeak: colors.statusDue.text }} />
         <View style={s.card}>
+          <NavRow label={t('onboarding.reset_setting')} onPress={handleResetOnboarding} isLast={false} colors={colors} radius={radius} />
           <TouchableOpacity style={[s.debugBtn, { backgroundColor: colors.statusDue.background }]} activeOpacity={0.7} onPress={handleTestNotification}>
             <Text style={[s.debugBtnText, { color: colors.statusDue.text }]}>{t('debug.testNotifBtn')}</Text>
           </TouchableOpacity>

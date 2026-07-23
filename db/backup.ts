@@ -181,6 +181,8 @@ export async function importDatabase(): Promise<ImportResult> {
           backup.settings.notifications_enabled,
         );
       }
+      // Импорт означает что пользователь уже работал с приложением
+      await txn.runAsync(`UPDATE app_settings SET onboarding_completed = 1 WHERE id = 1;`);
 
       // Категории — сохраняем оригинальные id
       for (const c of backup.categories) {

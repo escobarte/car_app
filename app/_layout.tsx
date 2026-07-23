@@ -35,9 +35,9 @@ const APP_VARIANT: 'clean' | 'data' =
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { getLocales } from 'expo-localization';
-import { Stack } from 'expo-router';
+import { Redirect, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -50,19 +50,38 @@ import { AppThemeProvider, useThemeCtx } from '@/contexts/theme-context';
 export const unstable_settings = { anchor: '(tabs)' };
 
 // ── Контекст результата импорта ───────────────────────────────────────────────
-type BootstrapCtx = { importResult: ImportResult | null };
-const BootstrapContext = createContext<BootstrapCtx>({ importResult: null });
+type BootstrapCtx = {
+  importResult: ImportResult | null;
+  completeOnboarding: () => void;
+  resetOnboarding: () => void;
+};
+const BootstrapContext = createContext<BootstrapCtx>({
+  importResult: null,
+  completeOnboarding: () => {},
+  resetOnboarding: () => {},
+});
 export function useBootstrap() { return useContext(BootstrapContext); }
 
 // ── Внутренний компонент: имеет доступ к ThemeContext ─────────────────────────
-function NavShell({ importResult }: { importResult: ImportResult | null }) {
+function NavShell({
+  importResult,
+  initialOnboardingCompleted,
+}: {
+  importResult: ImportResult | null;
+  initialOnboardingCompleted: boolean;
+}) {
   const { isDark } = useThemeCtx();
+  const [onboardingCompleted, setOnboardingCompleted] = useState(initialOnboardingCompleted);
+
+  const completeOnboarding = useCallback(() => setOnboardingCompleted(true), []);
+  const resetOnboarding    = useCallback(() => setOnboardingCompleted(false), []);
 
   return (
-    <BootstrapContext.Provider value={{ importResult }}>
+    <BootstrapContext.Provider value={{ importResult, completeOnboarding, resetOnboarding }}>
       <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
         <Stack>
-          <Stack.Screen name="(tabs)"          options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding"       options={{ headerShown: false, gestureEnabled: false }} />
+          <Stack.Screen name="(tabs)"           options={{ headerShown: false }} />
           <Stack.Screen name="add-fuel"         options={{ headerShown: false }} />
           <Stack.Screen name="add-expense"      options={{ headerShown: false }} />
           <Stack.Screen name="add-reminder"     options={{ headerShown: false }} />
@@ -74,6 +93,7 @@ function NavShell({ importResult }: { importResult: ImportResult | null }) {
           <Stack.Screen name="db-check"         options={{ headerShown: false }} />
           <Stack.Screen name="modal"            options={{ presentation: 'modal', title: 'Modal' }} />
         </Stack>
+        {!onboardingCompleted && <Redirect href={'/onboarding' as never} />}
         <StatusBar style={isDark ? 'light' : 'dark'} />
       </ThemeProvider>
     </BootstrapContext.Provider>
@@ -82,9 +102,10 @@ function NavShell({ importResult }: { importResult: ImportResult | null }) {
 
 // ── Корневой Layout ───────────────────────────────────────────────────────────
 export default function RootLayout() {
-  const [isReady,      setIsReady]      = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [initDark,     setInitDark]     = useState(true);
+  const [isReady,                   setIsReady]                   = useState(false);
+  const [importResult,              setImportResult]              = useState<ImportResult | null>(null);
+  const [initDark,                  setInitDark]                  = useState(true);
+  const [initOnboardingCompleted,   setInitOnboardingCompleted]   = useState(true);
 
   useEffect(() => {
     async function bootstrap() {
@@ -99,6 +120,7 @@ export default function RootLayout() {
           await i18n.changeLanguage(settings.language);
         }
         setInitDark(settings.theme !== 'light');
+        setInitOnboardingCompleted((settings.onboarding_completed ?? 0) === 1);
       }
 
       if (APP_VARIANT === 'data') {
@@ -138,7 +160,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AppThemeProvider initialDark={initDark}>
-        <NavShell importResult={importResult} />
+        <NavShell importResult={importResult} initialOnboardingCompleted={initOnboardingCompleted} />
       </AppThemeProvider>
     </GestureHandlerRootView>
   );
