@@ -402,7 +402,6 @@ export default function DashboardScreen() {
         >
           <Text style={s.totalLabel}>{t('dashboard.thisMonth')}</Text>
           <Text style={s.totalAmount}>{formatMoney(monthlyTotal, currCode)}</Text>
-          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.55)" style={{ marginTop: 6 }} />
         </LinearGradient>
       </TouchableOpacity>
 
