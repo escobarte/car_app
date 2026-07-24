@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { useBootstrap } from '@/app/_layout';
@@ -42,10 +42,7 @@ const GridOverlay = memo(function GridOverlay({
   const hCount = Math.ceil(height / CELL) + 1;
   const vCount = Math.ceil(width  / CELL) + 1;
   return (
-    <View
-      style={[StyleSheet.absoluteFillObject, { opacity }]}
-      pointerEvents="none"
-    >
+    <View style={[StyleSheet.absoluteFillObject, { opacity }]}>
       {Array.from({ length: hCount }, (_, i) => (
         <View
           key={`h${i}`}
@@ -77,9 +74,9 @@ function Pagination({ current, th }: { current: number; th: AppTheme }) {
         <View
           key={i}
           style={{
-            width:           i === current ? 22 : 7,
-            height:          7,
-            borderRadius:    3.5,
+            width:           i === current ? 22 : 6,
+            height:          6,
+            borderRadius:    3,
             backgroundColor: i === current ? th.colors.accent : th.colors.textWeak,
             marginHorizontal: 3,
           }}
@@ -89,7 +86,7 @@ function Pagination({ current, th }: { current: number; th: AppTheme }) {
   );
 }
 
-// ─── GradientButton ───────────────────────────────────────────────────────────
+// ─── Кнопки ───────────────────────────────────────────────────────────────────
 
 function GradientButton({
   label,
@@ -104,24 +101,41 @@ function GradientButton({
 }) {
   if (disabled) {
     return (
-      <View style={[g.gradBtnTouch, { backgroundColor: th.colors.surfaceSecondary }]}>
-        <View style={g.gradBtnInner}>
-          <Text style={[g.gradBtnText, { color: th.colors.textMuted }]}>{label}</Text>
-        </View>
+      <View style={[g.btn, { backgroundColor: th.colors.surfaceSecondary }]}>
+        <Text style={[g.btnText, { color: th.colors.textMuted }]}>{label}</Text>
       </View>
     );
   }
   return (
-    <TouchableOpacity style={g.gradBtnTouch} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity style={g.btnTouch} onPress={onPress} activeOpacity={0.85}>
       <LinearGradient
         colors={th.gradient.accent.colors}
         start={th.gradient.accent.start}
         end={th.gradient.accent.end}
-        style={g.gradBtnInner}
+        style={g.btn}
       >
-        <Text style={[g.gradBtnText, { color: '#ffffff' }]}>{label}</Text>
+        <Text style={[g.btnText, { color: '#ffffff' }]}>{label}</Text>
       </LinearGradient>
     </TouchableOpacity>
+  );
+}
+
+// ─── Нижний блок: пагинация + кнопка (одинаковый на всех экранах) ────────────
+
+function BottomBlock({
+  current,
+  th,
+  children,
+}: {
+  current: number;
+  th: AppTheme;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={g.bottomBlock}>
+      <Pagination current={current} th={th} />
+      {children}
+    </View>
   );
 }
 
@@ -132,74 +146,55 @@ function SlideWelcome({
   screenH,
   th,
   currentPage,
-  bottomInset,
   onNext,
 }: {
   screenW: number;
   screenH: number;
   th: AppTheme;
   currentPage: number;
-  bottomInset: number;
   onNext: () => void;
 }) {
   const { t } = useTranslation();
   const { colors, onboarding } = th;
 
   return (
-    <View style={{ width: screenW, height: screenH, overflow: 'hidden' }}>
-      {/* Фоновый градиент: чёрный сверху → насыщенный синий снизу */}
-      <LinearGradient
-        colors={onboarding.gradientColors}
-        locations={[0, 0.45, 0.8, 1]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-        pointerEvents="none"
-      />
-      {/* Бирюзовое свечение у нижнего края */}
-      <LinearGradient
-        colors={['transparent', onboarding.glowTeal]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={{ ...StyleSheet.absoluteFillObject, top: screenH * 0.62 }}
-        pointerEvents="none"
-      />
-      {/* Сетка */}
-      <GridOverlay
-        opacity={onboarding.gridOverlayOpacity}
-        color={colors.textPrimary}
-        width={screenW}
-        height={screenH}
-      />
+    <View style={{ width: screenW, height: screenH, backgroundColor: colors.background, overflow: 'hidden' }}>
+      {/* СЛОЙ 1 — декор, всегда первым, не перехватывает тапы */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <LinearGradient
+          colors={onboarding.gradientColors}
+          locations={[0, 0.45, 0.8, 1]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <GridOverlay
+          opacity={onboarding.gridOverlayOpacity}
+          color={colors.textPrimary}
+          width={screenW}
+          height={screenH}
+        />
+      </View>
 
-      {/* Контент: блок смещён вверх — примерно на 38% высоты */}
-      <View style={{ flex: 1 }}>
-        <View style={{ flex: 38 }} />
-        <View style={{ alignItems: 'center', paddingHorizontal: 32 }}>
-          {/* Лого: подложка-свечение (Android) + shadow (iOS) */}
+      {/* СЛОЙ 2 — контент */}
+      <SafeAreaView style={{ flex: 1 }}>
+        <View style={[g.content, { alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }]}>
+          {/* Лого со свечением-подложкой */}
           <View style={{ alignItems: 'center', justifyContent: 'center' }}>
             <View
+              pointerEvents="none"
               style={{
                 position: 'absolute',
-                width: 164, height: 164, borderRadius: 82,
+                width: 180, height: 180, borderRadius: 90,
                 backgroundColor: onboarding.glowAccent,
-                opacity: 0.55,
+                opacity: 0.18,
               }}
-              pointerEvents="none"
             />
-            <View style={{
-              shadowColor:   colors.accent,
-              shadowOffset:  { width: 0, height: 0 },
-              shadowOpacity: 0.5,
-              shadowRadius:  30,
-              elevation:     10,
-            }}>
-              <Image
-                source={require('../assets/icon-rounded.png')}
-                style={{ width: 108, height: 108, borderRadius: 24 }}
-                resizeMode="cover"
-              />
-            </View>
+            <Image
+              source={require('../assets/icon-rounded-white-edge.png')}
+              style={{ width: 128, height: 128, borderRadius: 28 }}
+              resizeMode="cover"
+            />
           </View>
 
           {/* Название */}
@@ -211,29 +206,26 @@ function SlideWelcome({
           <View style={[g.accentLine, { backgroundColor: colors.accent }]} />
 
           {/* Слоган */}
-          <Text style={[g.slogan, { color: colors.textSecondary, marginTop: 18 }]}>
+          <Text style={[g.slogan, { color: colors.textSecondary, marginTop: 20 }]}>
             {t('onboarding.welcome_slogan_line1')}
           </Text>
           <Text style={[g.slogan, { color: colors.textSecondary }]}>
             {t('onboarding.welcome_slogan_line2')}
           </Text>
         </View>
-        <View style={{ flex: 62 }} />
-      </View>
 
-      {/* Нижний блок: пагинация + кнопка */}
-      <View style={[g.bottomBar, { paddingBottom: Math.max(bottomInset, 0) + 28 }]}>
-        <Pagination current={currentPage} th={th} />
-        <TouchableOpacity
-          style={[g.startBtn, { backgroundColor: onboarding.startBtnBg }]}
-          onPress={onNext}
-          activeOpacity={0.85}
-        >
-          <Text style={[g.startBtnText, { color: colors.accent }]} numberOfLines={1}>
-            {t('onboarding.start')}
-          </Text>
-        </TouchableOpacity>
-      </View>
+        <BottomBlock current={currentPage} th={th}>
+          <TouchableOpacity
+            style={[g.btn, { backgroundColor: onboarding.startBtnBg }]}
+            onPress={onNext}
+            activeOpacity={0.85}
+          >
+            <Text style={[g.btnText, { color: colors.accent }]} numberOfLines={1}>
+              {t('onboarding.start')}
+            </Text>
+          </TouchableOpacity>
+        </BottomBlock>
+      </SafeAreaView>
     </View>
   );
 }
@@ -245,7 +237,6 @@ function SlideCar({
   screenH,
   th,
   currentPage,
-  bottomInset,
   carName,
   setCarName,
   odometer,
@@ -257,7 +248,6 @@ function SlideCar({
   screenH:    number;
   th:         AppTheme;
   currentPage:number;
-  bottomInset:number;
   carName:    string;
   setCarName: (v: string) => void;
   odometer:   string;
@@ -271,127 +261,107 @@ function SlideCar({
   const [odoFocused, setOdoFocused] = useState(false);
 
   return (
-    <View style={{ width: screenW, height: screenH, overflow: 'hidden' }}>
-      {/* Фон */}
-      <View
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.background }]}
-        pointerEvents="none"
-      />
-      {/* Голубое свечение сверху */}
-      <LinearGradient
-        colors={[onboarding.glowAccent, 'transparent']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={{ ...StyleSheet.absoluteFillObject, bottom: screenH * 0.55 }}
-        pointerEvents="none"
-      />
-      <GridOverlay
-        opacity={onboarding.gridOverlayOpacityInner}
-        color={colors.textPrimary}
-        width={screenW}
-        height={screenH}
-      />
+    <View style={{ width: screenW, height: screenH, backgroundColor: colors.background, overflow: 'hidden' }}>
+      {/* СЛОЙ 1 — декор */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {/* Еле заметный голубой подсвет сверху, 35% высоты */}
+        <LinearGradient
+          colors={[onboarding.glowAccent, 'transparent']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: screenH * 0.35, opacity: 0.28 }}
+        />
+        <GridOverlay
+          opacity={onboarding.gridOverlayOpacityInner}
+          color={colors.textPrimary}
+          width={screenW}
+          height={screenH}
+        />
+      </View>
 
+      {/* СЛОЙ 2 — контент */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {/* Контент прижат к верху */}
-        <ScrollView
-          style={{ flex: 1 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 64 }}
-        >
-          {/* Надзаголовок */}
-          <Text style={[g.stepLabel, { color: colors.accent }]}>
-            {t('onboarding.step_of')}
-          </Text>
+        <SafeAreaView style={{ flex: 1 }}>
+          <View style={[g.content, { paddingTop: 36 }]}>
+            {/* Надзаголовок */}
+            <Text style={[g.stepLabel, { color: colors.accent }]}>
+              {t('onboarding.step_of')}
+            </Text>
 
-          {/* Заголовок */}
-          <Text style={[g.slideTitle, { color: colors.textPrimary }]}>
-            {t('onboarding.car_title')}
-          </Text>
-          <Text style={[g.slideSubtitle, { color: colors.textSecondary }]}>
-            {t('onboarding.car_subtitle')}
-          </Text>
+            {/* Заголовок и подпись */}
+            <Text style={[g.slideTitle, { color: colors.textPrimary, marginTop: 10 }]}>
+              {t('onboarding.car_title')}
+            </Text>
+            <Text style={[g.slideSubtitle, { color: colors.textSecondary, marginTop: 6 }]}>
+              {t('onboarding.car_subtitle')}
+            </Text>
 
-          <View style={{ height: 24 }} />
+            {/* Поле: Название машины */}
+            <Text style={[g.fieldLabel, { color: colors.textMuted, marginTop: 28 }]}>
+              {t('onboarding.name_label')}
+            </Text>
+            <View style={[
+              g.fieldWrap,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}>
+              <Ionicons name="car-outline" size={20} color={colors.textSecondary} style={{ marginRight: 14 }} />
+              <TextInput
+                value={carName}
+                onChangeText={setCarName}
+                placeholder={t('onboarding.name_placeholder')}
+                placeholderTextColor={colors.textWeak}
+                style={[g.fieldInput, { color: colors.textPrimary }]}
+                selectionColor={colors.accent}
+                returnKeyType="next"
+                maxLength={40}
+              />
+            </View>
 
-          {/* Поле: Название машины */}
-          <Text style={[g.fieldLabel, { color: colors.textMuted }]}>
-            {t('onboarding.name_label')}
-          </Text>
-          <View style={[
-            g.fieldWrap,
-            {
-              backgroundColor: colors.surface,
-              borderColor:     colors.border,
-            },
-          ]}>
-            <Ionicons name="car-outline" size={18} color={colors.textSecondary} style={{ marginRight: 12 }} />
-            <TextInput
-              value={carName}
-              onChangeText={setCarName}
-              placeholder={t('onboarding.name_placeholder')}
-              placeholderTextColor={colors.textWeak}
-              style={[g.fieldInput, { color: colors.textPrimary }]}
-              selectionColor={colors.accent}
-              returnKeyType="next"
-              maxLength={40}
-            />
+            {/* Поле: Пробег */}
+            <Text style={[g.fieldLabel, { color: colors.textMuted, marginTop: 18 }]}>
+              {t('onboarding.odometer_label')}
+            </Text>
+            <View style={[
+              g.fieldWrap,
+              {
+                backgroundColor: colors.surface,
+                borderColor:     odoFocused ? colors.borderAccent : colors.border,
+              },
+            ]}>
+              <Ionicons
+                name="speedometer-outline"
+                size={20}
+                color={odoFocused ? colors.accent : colors.textSecondary}
+                style={{ marginRight: 14 }}
+              />
+              <TextInput
+                value={odometer}
+                onChangeText={(txt) => setOdometer(txt.replace(/[^0-9]/g, ''))}
+                placeholder="0"
+                placeholderTextColor={colors.textWeak}
+                keyboardType="numeric"
+                style={[g.fieldInput, { color: colors.textPrimary }]}
+                selectionColor={colors.accent}
+                onFocus={() => setOdoFocused(true)}
+                onBlur={() => setOdoFocused(false)}
+                returnKeyType="done"
+                maxLength={7}
+              />
+            </View>
           </View>
 
-          <View style={{ height: 16 }} />
-
-          {/* Поле: Пробег */}
-          <Text style={[g.fieldLabel, { color: colors.textMuted }]}>
-            {t('onboarding.odometer_label')}
-          </Text>
-          <View style={[
-            g.fieldWrap,
-            {
-              backgroundColor: colors.surface,
-              borderColor:     odoFocused ? colors.borderAccent : colors.border,
-              // Мягкое свечение вокруг поля при фокусе
-              shadowColor:    odoFocused ? colors.accent : 'transparent',
-              shadowOffset:   { width: 0, height: 0 },
-              shadowOpacity:  odoFocused ? 0.45 : 0,
-              shadowRadius:   odoFocused ? 8 : 0,
-              elevation:      odoFocused ? 4 : 0,
-            },
-          ]}>
-            <Ionicons
-              name="speedometer-outline"
-              size={18}
-              color={odoFocused ? colors.accent : colors.textSecondary}
-              style={{ marginRight: 12 }}
+          <BottomBlock current={currentPage} th={th}>
+            <GradientButton
+              label={t('onboarding.next')}
+              onPress={onNext}
+              disabled={!odoValid}
+              th={th}
             />
-            <TextInput
-              value={odometer}
-              onChangeText={setOdometer}
-              placeholder="0"
-              placeholderTextColor={colors.textWeak}
-              keyboardType="numeric"
-              style={[g.fieldInput, { color: colors.textPrimary }]}
-              selectionColor={colors.accent}
-              onFocus={() => setOdoFocused(true)}
-              onBlur={() => setOdoFocused(false)}
-              returnKeyType="done"
-            />
-          </View>
-        </ScrollView>
-
-        {/* Нижний блок: пагинация + кнопка, прижаты к низу */}
-        <View style={[g.bottomBar, { paddingBottom: Math.max(bottomInset, 0) + 28 }]}>
-          <Pagination current={currentPage} th={th} />
-          <GradientButton
-            label={t('onboarding.next')}
-            onPress={onNext}
-            disabled={!odoValid}
-            th={th}
-          />
-        </View>
+          </BottomBlock>
+        </SafeAreaView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -404,20 +374,16 @@ function SlideDone({
   screenH,
   th,
   currentPage,
-  bottomInset,
-  odoValid,
   onFinish,
 }: {
   screenW:     number;
   screenH:     number;
   th:          AppTheme;
   currentPage: number;
-  bottomInset: number;
-  odoValid:    boolean;
   onFinish:    () => void;
 }) {
   const { t } = useTranslation();
-  const { colors, onboarding, radius } = th;
+  const { colors, onboarding } = th;
 
   const tips: Array<{
     icon: React.ComponentProps<typeof Ionicons>['name'];
@@ -429,87 +395,78 @@ function SlideDone({
   ];
 
   return (
-    <View style={{ width: screenW, height: screenH, overflow: 'hidden' }}>
-      {/* Фон */}
-      <View
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.background }]}
-        pointerEvents="none"
-      />
-      {/* Зелёное свечение сверху */}
-      <LinearGradient
-        colors={[onboarding.glowSuccess, 'transparent']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={{ ...StyleSheet.absoluteFillObject, bottom: screenH * 0.55 }}
-        pointerEvents="none"
-      />
-      <GridOverlay
-        opacity={onboarding.gridOverlayOpacityInner}
-        color={colors.textPrimary}
-        width={screenW}
-        height={screenH}
-      />
+    <View style={{ width: screenW, height: screenH, backgroundColor: colors.background, overflow: 'hidden' }}>
+      {/* СЛОЙ 1 — декор */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {/* Лёгкий зелёный подсвет сверху, 35% высоты */}
+        <LinearGradient
+          colors={[onboarding.glowSuccess, 'transparent']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: screenH * 0.35, opacity: 0.22 }}
+        />
+        <GridOverlay
+          opacity={onboarding.gridOverlayOpacityInner}
+          color={colors.textPrimary}
+          width={screenW}
+          height={screenH}
+        />
+      </View>
 
-      {/* Контент */}
-      <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: 'center' }}>
-        {/* Галочка */}
-        <View style={{ alignItems: 'center', marginBottom: 28 }}>
-          <View style={{
-            width: 58, height: 58, borderRadius: 29,
-            backgroundColor: onboarding.glowSuccess,
-            borderWidth: 2,
-            borderColor: colors.statusOk.bar,
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}>
-            <Ionicons name="checkmark" size={30} color={colors.statusOk.bar} />
+      {/* СЛОЙ 2 — контент */}
+      <SafeAreaView style={{ flex: 1 }}>
+        <View style={[g.content, { paddingTop: 44 }]}>
+          {/* Круг с галочкой */}
+          <View style={{ alignItems: 'center' }}>
+            <View style={{
+              width: 68, height: 68, borderRadius: 34,
+              backgroundColor: onboarding.glowSuccess,
+              borderWidth: 2,
+              borderColor: colors.statusOk.bar,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <Ionicons name="checkmark" size={30} color={colors.statusOk.bar} />
+            </View>
+          </View>
+
+          {/* Заголовок и подпись */}
+          <Text style={[g.slideTitle, { color: colors.textPrimary, textAlign: 'center', marginTop: 20 }]}>
+            {t('onboarding.done_title')}
+          </Text>
+          <Text style={[g.slideSubtitle, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
+            {t('onboarding.done_subtitle')}
+          </Text>
+
+          {/* Карточки-подсказки */}
+          <View style={{ marginTop: 24 }}>
+            {tips.map(({ icon, key }) => (
+              <View
+                key={key}
+                style={[
+                  g.tipCard,
+                  { backgroundColor: colors.surface, borderColor: colors.border },
+                ]}
+              >
+                <View style={[g.tipIconBox, { backgroundColor: onboarding.glowAccent }]}>
+                  <Ionicons name={icon} size={16} color={colors.accent} />
+                </View>
+                <Text style={[g.tipText, { color: colors.textSecondary }]} numberOfLines={2}>
+                  {t(`onboarding.${key}`)}
+                </Text>
+              </View>
+            ))}
           </View>
         </View>
 
-        {/* Заголовок */}
-        <Text style={[g.slideTitle, { color: colors.textPrimary, textAlign: 'center' }]}>
-          {t('onboarding.done_title')}
-        </Text>
-        <Text style={[g.slideSubtitle, { color: colors.textSecondary, textAlign: 'center', marginBottom: 32 }]}>
-          {t('onboarding.done_subtitle')}
-        </Text>
-
-        {/* Карточки-подсказки */}
-        {tips.map(({ icon, key }) => (
-          <View
-            key={key}
-            style={[
-              g.tipCard,
-              {
-                backgroundColor: colors.surface,
-                borderRadius:    radius.card,
-                borderColor:     colors.border,
-              },
-            ]}
-          >
-            <View style={[
-              g.tipIconBox,
-              { backgroundColor: onboarding.glowAccent, borderRadius: 9 },
-            ]}>
-              <Ionicons name={icon} size={16} color={colors.accent} />
-            </View>
-            <Text style={[g.tipText, { color: colors.textSecondary }]} numberOfLines={2}>
-              {t(`onboarding.${key}`)}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Нижний блок */}
-      <View style={[g.bottomBar, { paddingBottom: Math.max(bottomInset, 0) + 28 }]}>
-        <Pagination current={currentPage} th={th} />
-        <GradientButton
-          label={t('onboarding.go')}
-          onPress={onFinish}
-          disabled={!odoValid}
-          th={th}
-        />
-      </View>
+        <BottomBlock current={currentPage} th={th}>
+          <GradientButton
+            label={t('onboarding.go')}
+            onPress={onFinish}
+            th={th}
+          />
+        </BottomBlock>
+      </SafeAreaView>
     </View>
   );
 }
@@ -518,8 +475,7 @@ function SlideDone({
 
 export default function OnboardingScreen() {
   const { th, isDark } = useThemeCtx();
-  const { t }  = useTranslation();
-  const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { width: screenW, height: screenH } = useWindowDimensions();
   const { completeOnboarding } = useBootstrap();
 
@@ -529,6 +485,11 @@ export default function OnboardingScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const pageRef   = useRef(0);
   pageRef.current = currentPage;
+
+  // Пробег хранится строкой из одних цифр (фильтр в onChangeText)
+  const odoValid = odometer.length > 0;
+  const odoValidRef = useRef(odoValid);
+  odoValidRef.current = odoValid;
 
   function goTo(idx: number) {
     scrollRef.current?.scrollTo({ x: idx * screenW, animated: true });
@@ -557,20 +518,14 @@ export default function OnboardingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screenW, t]);
 
-  const odoValid = odometer.trim().length > 0 && /^\d+$/.test(odometer.trim());
-
   async function handleFinish() {
     const name = carName.trim() || (t('onboarding.name_placeholder') as string);
-    const odo  = parseInt(odometer.trim(), 10);
+    const odo  = parseInt(odometer, 10);
     await carRepo.updateCar({ name, current_odometer: isNaN(odo) ? 0 : odo });
     await settingsRepo.updateSettings({ onboarding_completed: 1 });
     completeOnboarding();
     router.replace('/(tabs)');
   }
-
-  const commonSlideProps = {
-    screenW, screenH, th, bottomInset: insets.bottom,
-  };
 
   return (
     <View style={{ flex: 1, backgroundColor: th.colors.background }}>
@@ -580,22 +535,33 @@ export default function OnboardingScreen() {
         ref={scrollRef}
         horizontal
         pagingEnabled
+        bounces={false}
         showsHorizontalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         scrollEventThrottle={16}
+        onScroll={(e) => {
+          // Свайп вперёд с экрана 2 заблокирован, пока пробег не введён.
+          // Свайпы 1→2 и назад — свободны.
+          if (!odoValidRef.current && e.nativeEvent.contentOffset.x > screenW) {
+            scrollRef.current?.scrollTo({ x: screenW, animated: false });
+          }
+        }}
         onMomentumScrollEnd={(e) => {
           const idx = Math.round(e.nativeEvent.contentOffset.x / screenW);
-          setCurrentPage(idx);
+          setCurrentPage(Math.max(0, Math.min(2, idx)));
         }}
-        directionalLockEnabled
       >
         <SlideWelcome
-          {...commonSlideProps}
+          screenW={screenW}
+          screenH={screenH}
+          th={th}
           currentPage={currentPage}
           onNext={() => goTo(1)}
         />
         <SlideCar
-          {...commonSlideProps}
+          screenW={screenW}
+          screenH={screenH}
+          th={th}
           currentPage={currentPage}
           carName={carName}
           setCarName={setCarName}
@@ -605,9 +571,10 @@ export default function OnboardingScreen() {
           onNext={() => goTo(2)}
         />
         <SlideDone
-          {...commonSlideProps}
+          screenW={screenW}
+          screenH={screenH}
+          th={th}
           currentPage={currentPage}
-          odoValid={odoValid}
           onFinish={handleFinish}
         />
       </ScrollView>
@@ -618,49 +585,71 @@ export default function OnboardingScreen() {
 // ─── Общие стили ─────────────────────────────────────────────────────────────
 
 const g = StyleSheet.create({
-  // Welcome
-  appName: {
-    fontSize: 26,
-    fontWeight: '500',
-    marginTop: 22,
-    letterSpacing: 0.3,
+  // Скелет
+  content: {
+    flex: 1,
+    paddingHorizontal: 22,
   },
-  accentLine: {
-    width: 40, height: 2, borderRadius: 1, marginTop: 14,
+  bottomBlock: {
+    paddingHorizontal: 22,
+    paddingBottom: 32,
   },
-  slogan: {
-    fontSize: 15, lineHeight: 22, textAlign: 'center',
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 22,
   },
-  startBtn: {
-    height: 52,
-    borderRadius: 16,
+
+  // Кнопки
+  btnTouch: {
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  btn: {
+    height: 56,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  startBtnText: {
-    fontSize: 16, fontWeight: '600',
+  btnText: {
+    fontSize: 16, fontWeight: '500',
+  },
+
+  // Welcome
+  appName: {
+    fontSize: 30,
+    fontWeight: '500',
+    marginTop: 26,
+    letterSpacing: 0.3,
+  },
+  accentLine: {
+    width: 48, height: 3, borderRadius: 2, marginTop: 16,
+  },
+  slogan: {
+    fontSize: 16, lineHeight: 24, textAlign: 'center',
   },
 
   // Slides 2 & 3
   stepLabel: {
-    fontSize: 10, fontWeight: '500', letterSpacing: 1.2,
-    marginBottom: 10, textTransform: 'uppercase',
+    fontSize: 11, fontWeight: '500', letterSpacing: 1.4,
+    textTransform: 'uppercase',
   },
   slideTitle: {
-    fontSize: 19, fontWeight: '500', marginBottom: 8,
+    fontSize: 22, fontWeight: '500',
   },
   slideSubtitle: {
-    fontSize: 14, lineHeight: 20,
+    fontSize: 13, lineHeight: 19,
   },
   fieldLabel: {
-    fontSize: 13, fontWeight: '400', marginBottom: 8,
+    fontSize: 12, fontWeight: '400', marginBottom: 8,
   },
   fieldWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 52,
-    borderRadius: 13,
-    paddingHorizontal: 14,
+    height: 58,
+    borderRadius: 15,
+    paddingHorizontal: 16,
     borderWidth: 1,
   },
   fieldInput: {
@@ -674,43 +663,20 @@ const g = StyleSheet.create({
   tipCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    height: 62,
+    borderRadius: 15,
     paddingHorizontal: 14,
-    paddingVertical: 12,
     marginBottom: 10,
     borderWidth: 1,
-    gap: 14,
   },
   tipIconBox: {
-    width: 28, height: 28,
+    width: 32, height: 32, borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
+    marginRight: 13,
   },
   tipText: {
     flex: 1, fontSize: 14, lineHeight: 20,
-  },
-
-  // Shared
-  bottomBar: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-  },
-  paginationRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  gradBtnTouch: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  gradBtnInner: {
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gradBtnText: {
-    fontSize: 16, fontWeight: '600',
   },
 });
