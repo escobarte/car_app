@@ -92,14 +92,82 @@ export const darkTheme = {
   },
 
   // ── Токены онбординга ────────────────────────────────────────────────────
+  // Фон собирается компонентом OnboardingBackground из четырёх слоёв:
+  // база → радиальное свечение → перспективная сетка → виньетка.
   onboarding: {
-    gradientColors:          ['#000000', '#02101f', '#07355c', '#0a4f85'] as [string, string, string, string],
-    glowAccent:              'rgba(29, 143, 214, 0.42)',
-    glowSuccess:             'rgba(76, 175, 125, 0.42)',
-    glowTeal:                'rgba(61, 214, 245, 0.38)',
-    gridOverlayOpacity:      0.15 as number,
-    gridOverlayOpacityInner: 0.07 as number,
-    startBtnBg:              '#ffffff',
+    // База фона — чуть теплее чистого чёрного, чтобы сетка читалась
+    bgBase:       '#05050a',
+    // Стопы для затухания сетки и виньетки (тот же цвет, разная альфа)
+    bgFadeStrong: 'rgba(5, 5, 10, 0.94)',
+    bgFadeMid:    'rgba(5, 5, 10, 0.62)',
+    bgFadeClear:  'rgba(5, 5, 10, 0)',
+
+    // Радиальное свечение сверху-центр
+    glowBlue:     '#3db5f5',
+    glowGreen:    '#4caf7d',
+    glowOpacity:  0.22 as number,   // суммарная альфа в центре свечения
+    glowSize:     1.45 as number,   // диаметр относительно ширины экрана
+
+    // Линии перспективной сетки
+    gridBlue:     'rgba(61, 181, 245, 0.10)',
+    gridGreen:    'rgba(76, 175, 125, 0.10)',
+
+    // Подложки под иконки (круг с галочкой, иконки карточек)
+    glowAccent:   'rgba(29, 143, 214, 0.42)',
+    glowSuccess:  'rgba(76, 175, 125, 0.42)',
+
+    startBtnBg:   '#ffffff',
+
+    // ── Размеры (увеличены на ~15% относительно первой версии) ────────────
+    sizes: {
+      logo:        144,
+      logoRadius:  32,
+      logoGlow:    200,
+      accentLineW: 55,
+      btnHeight:   62,
+      btnRadius:   20,
+      fieldHeight: 66,
+      fieldRadius: 17,
+      fieldIcon:   23,
+      doneCircle:  78,
+      doneCheck:   34,
+      tipHeight:   72,
+      tipRadius:   17,
+      tipIconBox:  37,
+      tipIconBoxR: 12,
+      tipIcon:     18,
+    },
+  },
+
+  // ── Тени (раздел 5 дизайн-системы) ──────────────────────────────────────
+  // Кроссплатформенно: iOS читает shadow*, Android — elevation.
+  // ВАЖНО: вешать только на View БЕЗ overflow:'hidden' и с непрозрачным
+  // backgroundColor — иначе тень обрежется на iOS и не построится на Android.
+  shadows: {
+    // Главный CTA: мягкое голубое свечение под кнопкой
+    ctaAccent: {
+      shadowColor:   '#1a8fd6',
+      shadowOffset:  { width: 0, height: 6 },
+      shadowOpacity: 0.45,
+      shadowRadius:  16,
+      elevation:     10,
+    },
+    // Белая кнопка на экране 1: нейтральная тёмная тень, без голубого
+    ctaNeutral: {
+      shadowColor:   '#000000',
+      shadowOffset:  { width: 0, height: 6 },
+      shadowOpacity: 0.45,
+      shadowRadius:  12,
+      elevation:     8,
+    },
+    // Карточки-подсказки: лёгкий подъём
+    card: {
+      shadowColor:   '#000000',
+      shadowOffset:  { width: 0, height: 3 },
+      shadowOpacity: 0.32,
+      shadowRadius:  8,
+      elevation:     4,
+    },
   },
 
   // ── Шрифты ───────────────────────────────────────────────────────────────
@@ -121,6 +189,20 @@ export const darkTheme = {
     label:          { fontSize: 13, fontWeight: '400' as const },
     labelSmall:     { fontSize: 12, fontWeight: '400' as const },
     sectionHeader:  { fontSize: 12, fontWeight: '400' as const, letterSpacing: 1 },
+
+    // Онбординг — отдельная шкала, крупнее основной (~+15%).
+    // Вес не задаётся: он приходит из fonts.onboarding.regular / .medium
+    onboarding: {
+      appName:    { fontSize: 34, letterSpacing: 0.3 },
+      slogan:     { fontSize: 18, lineHeight: 27 },
+      stepLabel:  { fontSize: 13, letterSpacing: 1.6 },
+      title:      { fontSize: 25 },
+      subtitle:   { fontSize: 15, lineHeight: 22 },
+      fieldLabel: { fontSize: 14 },
+      fieldInput: { fontSize: 18 },
+      tipText:    { fontSize: 16, lineHeight: 23 },
+      btnText:    { fontSize: 18 },
+    },
   },
 };
 
@@ -166,13 +248,50 @@ export const lightTheme: AppTheme = {
   fonts:      darkTheme.fonts,
   typography: darkTheme.typography,
   onboarding: {
-    gradientColors:          ['#ffffff', '#eaf5fd', '#c9e7f8', '#a9daf5'] as [string, string, string, string],
-    glowAccent:              'rgba(29, 143, 214, 0.16)',
-    glowSuccess:             'rgba(76, 175, 125, 0.16)',
-    glowTeal:                'rgba(61, 214, 245, 0.20)',
-    gridOverlayOpacity:      0.06 as number,
-    gridOverlayOpacityInner: 0.035 as number,
-    startBtnBg:              '#f0f0f4',
+    bgBase:       '#f7fafd',
+    bgFadeStrong: 'rgba(247, 250, 253, 0.94)',
+    bgFadeMid:    'rgba(247, 250, 253, 0.62)',
+    bgFadeClear:  'rgba(247, 250, 253, 0)',
+
+    glowBlue:     '#3db5f5',
+    glowGreen:    '#4caf7d',
+    glowOpacity:  0.16 as number,
+    glowSize:     1.45 as number,
+
+    gridBlue:     'rgba(26, 143, 214, 0.11)',
+    gridGreen:    'rgba(26, 143, 90, 0.11)',
+
+    glowAccent:   'rgba(29, 143, 214, 0.16)',
+    glowSuccess:  'rgba(76, 175, 125, 0.16)',
+
+    startBtnBg:   '#ffffff',
+
+    sizes:        darkTheme.onboarding.sizes,
+  },
+
+  // На светлом фоне те же тени выглядят грязными — ослаблены.
+  shadows: {
+    ctaAccent: {
+      shadowColor:   '#1a8fd6',
+      shadowOffset:  { width: 0, height: 6 },
+      shadowOpacity: 0.28,
+      shadowRadius:  14,
+      elevation:     8,
+    },
+    ctaNeutral: {
+      shadowColor:   '#000000',
+      shadowOffset:  { width: 0, height: 4 },
+      shadowOpacity: 0.16,
+      shadowRadius:  10,
+      elevation:     5,
+    },
+    card: {
+      shadowColor:   '#000000',
+      shadowOffset:  { width: 0, height: 2 },
+      shadowOpacity: 0.10,
+      shadowRadius:  6,
+      elevation:     2,
+    },
   },
 } as const;
 

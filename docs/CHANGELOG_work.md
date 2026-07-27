@@ -9,6 +9,12 @@
 
 ---
 
+## 2026-07-27 (2)
+- Onboarding: фон переделан под мокап — новый общий компонент OnboardingBackground с пропом accent ('blue' | 'green'): почти чёрная база, радиальное свечение сверху-центр, перспективная сетка с затуханием к центру, виньетка по краям. Без новых пакетов: радиальный градиент собран из концентрических кругов, перспектива — поворотом лучей вокруг точки схода.
+- Размеры текста и иконок увеличены на ~15%, вынесены в тему (typography.onboarding, onboarding.sizes). Добавлены токены theme.shadows (ctaAccent / ctaNeutral / card) — голубое свечение под главным CTA, нейтральная тень под белой кнопкой, подъём карточек на экране «Всё готово». iOS shadow* + Android elevation.
+- файлы: components/OnboardingBackground.tsx (новый), constants/theme.ts, app/onboarding.tsx
+- статус: ждёт проверки на телефоне
+
 ## 2026-07-27
 - Onboarding: подключён шрифт Helvetica Neue (веса 400/500 отдельными файлами) через useFonts; нативный splash держится до готовности БД и шрифтов. fontFamily задаётся только на экранах онбординга через тему (th.fonts.onboarding.regular / .medium), без хардкода в компонентах.
 - Требуются файлы assets/fonts/HelveticaNeue-Regular.ttf и HelveticaNeue-Medium.ttf — без них Metro не соберёт бандл.
