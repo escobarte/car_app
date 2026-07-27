@@ -3,8 +3,8 @@ import {
   Alert,
   BackHandler,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -97,9 +97,12 @@ function GradientButton({
   );
 }
 
-// ─── Нижний блок: пагинация + кнопка (одинаковый на всех экранах) ────────────
+// ─── Футер: пагинация + кнопка, единый блок внизу экрана ─────────────────────
+// marginTop:'auto' прижимает футер к нижней кромке независимо от того,
+// сколько места занял контент выше. Не absolute — иначе KeyboardAvoidingView
+// на экране 2 не смог бы поднять его над клавиатурой.
 
-function BottomBlock({
+function Footer({
   current,
   th,
   children,
@@ -109,7 +112,7 @@ function BottomBlock({
   children: React.ReactNode;
 }) {
   return (
-    <View style={g.bottomBlock}>
+    <View style={g.footer}>
       <Pagination current={current} th={th} />
       {children}
     </View>
@@ -181,7 +184,7 @@ function SlideWelcome({
           </Text>
         </View>
 
-        <BottomBlock current={currentPage} th={th}>
+        <Footer current={currentPage} th={th}>
           {/* Белая кнопка: тень нейтральная тёмная, без голубого свечения */}
           <TouchableOpacity
             style={[
@@ -198,7 +201,7 @@ function SlideWelcome({
               {t('onboarding.start')}
             </Text>
           </TouchableOpacity>
-        </BottomBlock>
+        </Footer>
       </SafeAreaView>
     </View>
   );
@@ -243,9 +246,19 @@ function SlideCar({
       <OnboardingBackground th={th} accent="blue" width={screenW} height={screenH} />
 
       {/* СЛОЙ 2 — контент */}
+      {/* behavior='padding' на ОБЕИХ платформах.
+          'height' на Android вычитал высоту клавиатуры вслепую поверх того,
+          что окно уже ужалось по adjustResize из манифеста, — отсюда двойное
+          сжатие и прыжок футера к центру. 'padding' считает отступ из
+          фактической геометрии (низ своего фрейма минус верх клавиатуры),
+          поэтому корректен и когда окно ужимается, и когда нет.
+          keyboardVerticalOffset=0: экран без хедера, идёт под статус-бар
+          (edgeToEdge). Если на телефоне кнопка не долезет до клавиатуры —
+          крутить надо именно эту величину. */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="padding"
+        keyboardVerticalOffset={0}
       >
         <SafeAreaView style={{ flex: 1 }}>
           <View style={[g.content, { paddingTop: 36 }]}>
@@ -323,14 +336,14 @@ function SlideCar({
             </View>
           </View>
 
-          <BottomBlock current={currentPage} th={th}>
+          <Footer current={currentPage} th={th}>
             <GradientButton
               label={t('onboarding.next')}
               onPress={onNext}
               disabled={!odoValid}
               th={th}
             />
-          </BottomBlock>
+          </Footer>
         </SafeAreaView>
       </KeyboardAvoidingView>
     </View>
@@ -424,13 +437,13 @@ function SlideDone({
           </View>
         </View>
 
-        <BottomBlock current={currentPage} th={th}>
+        <Footer current={currentPage} th={th}>
           <GradientButton
             label={t('onboarding.go')}
             onPress={onFinish}
             th={th}
           />
-        </BottomBlock>
+        </Footer>
       </SafeAreaView>
     </View>
   );
@@ -456,7 +469,10 @@ export default function OnboardingScreen() {
   const odoValidRef = useRef(odoValid);
   odoValidRef.current = odoValid;
 
+  // Клавиатура закрывается на ЛЮБОЙ смене шага — и по кнопке, и по свайпу.
+  // Иначе цифровая клавиатура поля пробега висела поверх следующего экрана.
   function goTo(idx: number) {
+    Keyboard.dismiss();
     scrollRef.current?.scrollTo({ x: idx * screenW, animated: true });
     setCurrentPage(idx);
   }
@@ -484,6 +500,7 @@ export default function OnboardingScreen() {
   }, [screenW, t]);
 
   async function handleFinish() {
+    Keyboard.dismiss();
     const name = carName.trim() || (t('onboarding.name_placeholder') as string);
     const odo  = parseInt(odometer, 10);
     await carRepo.updateCar({ name, current_odometer: isNaN(odo) ? 0 : odo });
@@ -512,8 +529,9 @@ export default function OnboardingScreen() {
           }
         }}
         onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / screenW);
-          setCurrentPage(Math.max(0, Math.min(2, idx)));
+          const idx = Math.max(0, Math.min(2, Math.round(e.nativeEvent.contentOffset.x / screenW)));
+          if (idx !== pageRef.current) Keyboard.dismiss();
+          setCurrentPage(idx);
         }}
       >
         <SlideWelcome
@@ -561,7 +579,8 @@ const g = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 22,
   },
-  bottomBlock: {
+  footer: {
+    marginTop: 'auto',      // прижимает футер к низу
     paddingHorizontal: 22,
     paddingBottom: 32,
   },
