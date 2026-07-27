@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { onboardingFonts } from './fonts';
 
 /**
  * Дизайн-система «Учёт расходов на авто»
@@ -101,6 +102,13 @@ export const darkTheme = {
     startBtnBg:              '#ffffff',
   },
 
+  // ── Шрифты ───────────────────────────────────────────────────────────────
+  // Кастомный шрифт подключён только для Onboarding (см. constants/fonts.ts).
+  // Применять как элемент массива стилей: [g.slideTitle, fonts.onboarding.medium]
+  fonts: {
+    onboarding: onboardingFonts,
+  },
+
   // ── Типографика (раздел 6 дизайн-системы) ───────────────────────────────
   // Два веса: 400 (обычный) и '500' (полужирный).
   // Регистр — обычный, кроме мелких заголовков-секций.
@@ -155,6 +163,7 @@ export const lightTheme: AppTheme = {
   },
   gradient:   darkTheme.gradient,
   radius:     darkTheme.radius,
+  fonts:      darkTheme.fonts,
   typography: darkTheme.typography,
   onboarding: {
     gradientColors:          ['#ffffff', '#eaf5fd', '#c9e7f8', '#a9daf5'] as [string, string, string, string],

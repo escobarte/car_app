@@ -34,20 +34,29 @@ const APP_VARIANT: 'clean' | 'data' =
   (_fromNative ?? _fromConfig ?? 'data') === 'clean' ? 'clean' : 'data';
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { useFonts } from 'expo-font';
 import { getLocales } from 'expo-localization';
 import { Redirect, Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { onboardingFontAssets } from '@/constants/fonts';
 import { initDatabase, settingsRepo, fuelRepo } from '@/db';
 import { importLegacyData, ImportResult } from '@/db/legacy-import';
 import i18n, { isSupportedLanguage } from '@/i18n';
 import { AppThemeProvider, useThemeCtx } from '@/contexts/theme-context';
 
 export const unstable_settings = { anchor: '(tabs)' };
+
+// Держим нативный splash на экране, пока не готовы БД и шрифты.
+// Скрываем вручную ниже, в RootLayout.
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* splash уже скрыт или недоступен (web / Expo Go) */
+});
 
 // ── Контекст результата импорта ───────────────────────────────────────────────
 type BootstrapCtx = {
@@ -107,6 +116,14 @@ export default function RootLayout() {
   const [initDark,                  setInitDark]                  = useState(true);
   const [initOnboardingCompleted,   setInitOnboardingCompleted]   = useState(true);
 
+  // Шрифты Onboarding. fontError — не блокируем запуск: приложение стартует
+  // на системном шрифте, а не зависает на splash навсегда.
+  const [fontsLoaded, fontError] = useFonts(onboardingFontAssets);
+
+  useEffect(() => {
+    if (fontError) console.error('[fonts]', fontError);
+  }, [fontError]);
+
   useEffect(() => {
     async function bootstrap() {
       const deviceCode = getLocales()[0]?.languageCode ?? 'en';
@@ -148,7 +165,18 @@ export default function RootLayout() {
     });
   }, []);
 
-  if (!isReady) {
+  // Рендерим только когда готовы И данные, И шрифты.
+  const canRender = isReady && (fontsLoaded || !!fontError);
+
+  useEffect(() => {
+    if (canRender) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [canRender]);
+
+  if (!canRender) {
+    // Поверх лежит нативный splash; индикатор — запасной вариант там,
+    // где splash недоступен.
     return (
       <View style={{ flex: 1, backgroundColor: '#000000',
                      justifyContent: 'center', alignItems: 'center' }}>

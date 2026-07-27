@@ -9,6 +9,12 @@
 
 ---
 
+## 2026-07-27
+- Onboarding: подключён шрифт Helvetica Neue (веса 400/500 отдельными файлами) через useFonts; нативный splash держится до готовности БД и шрифтов. fontFamily задаётся только на экранах онбординга через тему (th.fonts.onboarding.regular / .medium), без хардкода в компонентах.
+- Требуются файлы assets/fonts/HelveticaNeue-Regular.ttf и HelveticaNeue-Medium.ttf — без них Metro не соберёт бандл.
+- файлы: constants/fonts.ts (новый), constants/theme.ts, app/_layout.tsx, app/onboarding.tsx, assets/fonts/README.md (новый)
+- статус: ждёт проверки на телефоне
+
 ## 2026-07-24
 - Онбординг: фикс фокуса поля пробега (убран вложенный вертикальный ScrollView + keyboardShouldPersistTaps на пейджере, фильтр цифр в onChangeText), все три экрана приведены к единому скелету (декор первым слоем с pointerEvents="none", SafeAreaView, общий нижний блок пагинация+кнопка), свайп 2→3 заблокирован до ввода пробега (перехват onScroll), «Let's go» всегда активна, размеры укрупнены по спеке (лого 128 из icon-rounded-white-edge.png, кнопки 56/18, поля 58/15, свечения сверху 35% с приглушённой opacity).
 - файлы: app/onboarding.tsx

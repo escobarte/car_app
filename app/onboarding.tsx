@@ -102,7 +102,7 @@ function GradientButton({
   if (disabled) {
     return (
       <View style={[g.btn, { backgroundColor: th.colors.surfaceSecondary }]}>
-        <Text style={[g.btnText, { color: th.colors.textMuted }]}>{label}</Text>
+        <Text style={[g.btnText, th.fonts.onboarding.medium, { color: th.colors.textMuted }]}>{label}</Text>
       </View>
     );
   }
@@ -114,7 +114,7 @@ function GradientButton({
         end={th.gradient.accent.end}
         style={g.btn}
       >
-        <Text style={[g.btnText, { color: '#ffffff' }]}>{label}</Text>
+        <Text style={[g.btnText, th.fonts.onboarding.medium, { color: '#ffffff' }]}>{label}</Text>
       </LinearGradient>
     </TouchableOpacity>
   );
@@ -155,7 +155,7 @@ function SlideWelcome({
   onNext: () => void;
 }) {
   const { t } = useTranslation();
-  const { colors, onboarding } = th;
+  const { colors, onboarding, fonts } = th;
 
   return (
     <View style={{ width: screenW, height: screenH, backgroundColor: colors.background, overflow: 'hidden' }}>
@@ -198,7 +198,7 @@ function SlideWelcome({
           </View>
 
           {/* Название */}
-          <Text style={[g.appName, { color: colors.textPrimary }]}>
+          <Text style={[g.appName, fonts.onboarding.medium, { color: colors.textPrimary }]}>
             MyCarLedger
           </Text>
 
@@ -206,10 +206,10 @@ function SlideWelcome({
           <View style={[g.accentLine, { backgroundColor: colors.accent }]} />
 
           {/* Слоган */}
-          <Text style={[g.slogan, { color: colors.textSecondary, marginTop: 20 }]}>
+          <Text style={[g.slogan, fonts.onboarding.regular, { color: colors.textSecondary, marginTop: 20 }]}>
             {t('onboarding.welcome_slogan_line1')}
           </Text>
-          <Text style={[g.slogan, { color: colors.textSecondary }]}>
+          <Text style={[g.slogan, fonts.onboarding.regular, { color: colors.textSecondary }]}>
             {t('onboarding.welcome_slogan_line2')}
           </Text>
         </View>
@@ -220,7 +220,7 @@ function SlideWelcome({
             onPress={onNext}
             activeOpacity={0.85}
           >
-            <Text style={[g.btnText, { color: colors.accent }]} numberOfLines={1}>
+            <Text style={[g.btnText, fonts.onboarding.medium, { color: colors.accent }]} numberOfLines={1}>
               {t('onboarding.start')}
             </Text>
           </TouchableOpacity>
@@ -256,7 +256,7 @@ function SlideCar({
   onNext:     () => void;
 }) {
   const { t } = useTranslation();
-  const { colors, onboarding } = th;
+  const { colors, onboarding, fonts } = th;
 
   const [odoFocused, setOdoFocused] = useState(false);
 
@@ -287,20 +287,20 @@ function SlideCar({
         <SafeAreaView style={{ flex: 1 }}>
           <View style={[g.content, { paddingTop: 36 }]}>
             {/* Надзаголовок */}
-            <Text style={[g.stepLabel, { color: colors.accent }]}>
+            <Text style={[g.stepLabel, fonts.onboarding.medium, { color: colors.accent }]}>
               {t('onboarding.step_of')}
             </Text>
 
             {/* Заголовок и подпись */}
-            <Text style={[g.slideTitle, { color: colors.textPrimary, marginTop: 10 }]}>
+            <Text style={[g.slideTitle, fonts.onboarding.medium, { color: colors.textPrimary, marginTop: 10 }]}>
               {t('onboarding.car_title')}
             </Text>
-            <Text style={[g.slideSubtitle, { color: colors.textSecondary, marginTop: 6 }]}>
+            <Text style={[g.slideSubtitle, fonts.onboarding.regular, { color: colors.textSecondary, marginTop: 6 }]}>
               {t('onboarding.car_subtitle')}
             </Text>
 
             {/* Поле: Название машины */}
-            <Text style={[g.fieldLabel, { color: colors.textMuted, marginTop: 28 }]}>
+            <Text style={[g.fieldLabel, fonts.onboarding.regular, { color: colors.textMuted, marginTop: 28 }]}>
               {t('onboarding.name_label')}
             </Text>
             <View style={[
@@ -313,7 +313,7 @@ function SlideCar({
                 onChangeText={setCarName}
                 placeholder={t('onboarding.name_placeholder')}
                 placeholderTextColor={colors.textWeak}
-                style={[g.fieldInput, { color: colors.textPrimary }]}
+                style={[g.fieldInput, fonts.onboarding.regular, { color: colors.textPrimary }]}
                 selectionColor={colors.accent}
                 returnKeyType="next"
                 maxLength={40}
@@ -321,7 +321,7 @@ function SlideCar({
             </View>
 
             {/* Поле: Пробег */}
-            <Text style={[g.fieldLabel, { color: colors.textMuted, marginTop: 18 }]}>
+            <Text style={[g.fieldLabel, fonts.onboarding.regular, { color: colors.textMuted, marginTop: 18 }]}>
               {t('onboarding.odometer_label')}
             </Text>
             <View style={[
@@ -343,7 +343,7 @@ function SlideCar({
                 placeholder="0"
                 placeholderTextColor={colors.textWeak}
                 keyboardType="numeric"
-                style={[g.fieldInput, { color: colors.textPrimary }]}
+                style={[g.fieldInput, fonts.onboarding.regular, { color: colors.textPrimary }]}
                 selectionColor={colors.accent}
                 onFocus={() => setOdoFocused(true)}
                 onBlur={() => setOdoFocused(false)}
@@ -383,7 +383,7 @@ function SlideDone({
   onFinish:    () => void;
 }) {
   const { t } = useTranslation();
-  const { colors, onboarding } = th;
+  const { colors, onboarding, fonts } = th;
 
   const tips: Array<{
     icon: React.ComponentProps<typeof Ionicons>['name'];
@@ -431,10 +431,10 @@ function SlideDone({
           </View>
 
           {/* Заголовок и подпись */}
-          <Text style={[g.slideTitle, { color: colors.textPrimary, textAlign: 'center', marginTop: 20 }]}>
+          <Text style={[g.slideTitle, fonts.onboarding.medium, { color: colors.textPrimary, textAlign: 'center', marginTop: 20 }]}>
             {t('onboarding.done_title')}
           </Text>
-          <Text style={[g.slideSubtitle, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
+          <Text style={[g.slideSubtitle, fonts.onboarding.regular, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
             {t('onboarding.done_subtitle')}
           </Text>
 
@@ -451,7 +451,7 @@ function SlideDone({
                 <View style={[g.tipIconBox, { backgroundColor: onboarding.glowAccent }]}>
                   <Ionicons name={icon} size={16} color={colors.accent} />
                 </View>
-                <Text style={[g.tipText, { color: colors.textSecondary }]} numberOfLines={2}>
+                <Text style={[g.tipText, fonts.onboarding.regular, { color: colors.textSecondary }]} numberOfLines={2}>
                   {t(`onboarding.${key}`)}
                 </Text>
               </View>
@@ -583,6 +583,9 @@ export default function OnboardingScreen() {
 }
 
 // ─── Общие стили ─────────────────────────────────────────────────────────────
+// fontFamily здесь НЕ задаётся: он приходит из темы (th.fonts.onboarding.*)
+// и подмешивается в массив стилей на месте использования. Указанный ниже
+// fontWeight — запасной вариант, если шрифт не загрузился.
 
 const g = StyleSheet.create({
   // Скелет
