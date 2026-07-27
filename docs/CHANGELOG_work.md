@@ -9,6 +9,11 @@
 
 ---
 
+## 2026-07-28
+- Onboarding: шрифт заменён с Helvetica Neue на Inter (Inter-Regular.ttf / Inter-Medium.ttf добавлены в assets/fonts/). Правка только в constants/fonts.ts — theme.ts и onboarding.tsx читают токены оттуда и не менялись. Строк 'HelveticaNeue-*' в коде не осталось.
+- файлы: constants/fonts.ts, assets/fonts/README.md
+- статус: ждёт проверки на телефоне
+
 ## 2026-07-27 (3)
 - Onboarding: починены футер и клавиатура. BottomBlock переименован в Footer, добавлен marginTop:'auto' — точки и кнопка всегда внизу. На экране 2 KeyboardAvoidingView переведён с behavior='height' на 'padding' для обеих платформ: 'height' на Android вычитал высоту клавиатуры поверх уже сработавшего adjustResize, отсюда двойное сжатие и прыжок футера к центру.
 - Keyboard.dismiss() при любой смене шага (кнопка, свайп) и при завершении — цифровая клавиатура больше не висит поверх следующего экрана.

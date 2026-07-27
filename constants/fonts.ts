@@ -3,7 +3,7 @@ import type { TextStyle } from 'react-native';
 /**
  * Кастомные шрифты приложения.
  *
- * Сейчас Helvetica Neue подключена ТОЛЬКО для экранов Onboarding.
+ * Сейчас Inter подключён ТОЛЬКО для экранов Onboarding.
  * Остальные экраны продолжают использовать системный шрифт
  * (Roboto на Android, SF Pro на iOS).
  *
@@ -17,8 +17,8 @@ import type { TextStyle } from 'react-native';
 // Ключ объекта = имя семейства, которое затем указывается в fontFamily.
 // Загружается один раз в app/_layout.tsx до первого рендера.
 export const onboardingFontAssets = {
-  'HelveticaNeue-Regular': require('../assets/fonts/HelveticaNeue-Regular.ttf'),
-  'HelveticaNeue-Medium':  require('../assets/fonts/HelveticaNeue-Medium.ttf'),
+  'Inter-Regular': require('../assets/fonts/Inter-Regular.ttf'),
+  'Inter-Medium':  require('../assets/fonts/Inter-Medium.ttf'),
 };
 
 // ─── Токены темы ─────────────────────────────────────────────────────────────
@@ -29,6 +29,6 @@ export const onboardingFonts: {
   regular: TextStyle;
   medium:  TextStyle;
 } = {
-  regular: { fontFamily: 'HelveticaNeue-Regular', fontWeight: '400' },
-  medium:  { fontFamily: 'HelveticaNeue-Medium',  fontWeight: '400' },
+  regular: { fontFamily: 'Inter-Regular', fontWeight: '400' },
+  medium:  { fontFamily: 'Inter-Medium',  fontWeight: '400' },
 };
