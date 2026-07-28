@@ -28,6 +28,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import { reminderRepo, carRepo, settingsRepo } from '@/db';
+import { scheduleReminderNotifications } from '@/notifications/engine';
 import DashStatModal, { StatRow } from '@/components/DashStatModal';
 
 type ReminderType = 'mileage' | 'time';
@@ -128,6 +129,14 @@ export default function AddReminderScreen() {
           warn_before:   wb,
         });
       }
+
+      // Расписание уведомлений пересобираем сразу: оно зависит от статусов
+      // регламентов, а те только что изменились. Без этого новый регламент
+      // молчал бы до ближайшего пересчёта одометра или рестарта приложения.
+      // Не блокируем показ модалки: сбой планировщика не должен «съесть»
+      // уже сохранённый регламент.
+      scheduleReminderNotifications()
+        .catch((e) => console.error('[notif] reschedule after reminder save', e));
 
       // ── Модалка-подтверждение ────────────────────────────────────────────
       const [car, settings] = await Promise.all([

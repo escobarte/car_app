@@ -43,6 +43,7 @@ import {
   calcReminderRow, STATUS_ORDER,
   type StatusKind, type ReminderRow,
 } from '@/utils/reminders';
+import { scheduleReminderNotifications } from '@/notifications/engine';
 import MarkDoneSheet from '@/components/MarkDoneSheet';
 import ReminderDetailModal from '@/components/ReminderDetailModal';
 import SettingsGearBtn from '@/components/SettingsGearBtn';
@@ -144,6 +145,12 @@ export default function ServiceScreen() {
       console.error('[ServiceScreen] deleteReminder', e);
       return;
     }
+
+    // Иначе удалённый регламент продолжал бы слать уведомления: планировщик
+    // снимает только те, что успел поставить сам, и делает это при пересборке.
+    scheduleReminderNotifications()
+      .catch((e) => console.error('[notif] reschedule after reminder delete', e));
+
     setShowDetail(false);
     setSelectedRow(null);
     loadData().catch(console.error);

@@ -256,6 +256,8 @@ const ru = {
     language:       'Язык',
     darkTheme:      'Тёмная тема',
     notifications:  'Уведомления',
+    notifPermDeniedHint:
+      'Разрешение на уведомления не выдано. Включите его для приложения в настройках телефона.',
     exportData:          'Экспорт данных',
     importData:          'Импорт данных',
     categories:          'Категории расходов',

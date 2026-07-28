@@ -26,7 +26,11 @@ import { AppTheme } from '@/constants/theme';
 import { useAppTheme, useThemeCtx } from '@/contexts/theme-context';
 import { settingsRepo, carRepo } from '@/db';
 import { useBootstrap } from '@/app/_layout';
-import { scheduleReminderNotifications } from '@/notifications/engine';
+import {
+  scheduleReminderNotifications,
+  requestNotificationPermissions,
+  hasNotificationPermission,
+} from '@/notifications/engine';
 import { exportDatabase, importDatabase } from '@/db/backup';
 
 // ─── Вспомогательные компоненты (получают colors через props) ───────────────
@@ -107,6 +111,9 @@ export default function SettingsScreen() {
   const [currency,     setCurrency]     = useState('MDL');
   const [language,     setLanguage]     = useState<'ru' | 'en'>('ru');
   const [notifEnabled, setNotifEnabled] = useState(true);
+  // Показываем подсказку, когда системное разрешение не выдано и тумблер
+  // из-за этого вернулся в «выкл».
+  const [notifPermDenied, setNotifPermDenied] = useState(false);
   const [backupState,  setBackupState]  = useState<'idle' | 'working' | 'done' | 'error'>('idle');
 
   // Редактирование названия машины
@@ -124,7 +131,14 @@ export default function SettingsScreen() {
     if (car) { setCarName(car.name); setOdometer(car.current_odometer); setCurrency(car.currency); }
     if (settings) {
       setLanguage(settings.language);
-      setNotifEnabled(settings.notifications_enabled === 1);
+      // Тумблер показывает реальное положение дел, а не только флаг в БД:
+      // разрешение могли отозвать в настройках телефона уже после включения.
+      // Сам флаг при этом не трогаем — это осознанный выбор пользователя,
+      // он восстановится, как только разрешение вернут.
+      const flagOn  = settings.notifications_enabled === 1;
+      const granted = await hasNotificationPermission();
+      setNotifEnabled(flagOn && granted);
+      setNotifPermDenied(flagOn && !granted);
     }
   }, []);
 
@@ -175,9 +189,28 @@ export default function SettingsScreen() {
   }
 
   async function handleNotifToggle(value: boolean) {
+    // Включение без системного разрешения бессмысленно: флаг в БД встанет,
+    // а планировщик всё равно выйдет молча. Поэтому сперва спрашиваем
+    // разрешение — это второе (после онбординга) место, где его можно выдать.
+    if (value) {
+      const granted = await requestNotificationPermissions();
+      if (!granted) {
+        // Тумблер не «залипает» включённым: значение контролируемое,
+        // без setNotifEnabled(true) он вернётся в исходное положение.
+        setNotifPermDenied(true);
+        return;
+      }
+    }
+
+    setNotifPermDenied(false);
     setNotifEnabled(value);
-    await settingsRepo.updateSettings({ notifications_enabled: value ? 1 : 0 });
-    scheduleReminderNotifications().catch(() => {});
+    try {
+      await settingsRepo.updateSettings({ notifications_enabled: value ? 1 : 0 });
+    } catch (e) {
+      console.error('[notif] updateSettings notifications_enabled', e);
+    }
+    scheduleReminderNotifications()
+      .catch((e) => console.error('[notif] reschedule after settings toggle', e));
   }
 
   // ── Экспорт ──────────────────────────────────────────────────────────────
@@ -336,6 +369,9 @@ export default function SettingsScreen() {
         <View style={s.card}>
           <SwitchRow label={t('settings.notifications')} value={notifEnabled} onChange={handleNotifToggle} isLast colors={colors} />
         </View>
+        {notifPermDenied && (
+          <Text style={s.notifPermHint}>{t('settings.notifPermDeniedHint')}</Text>
+        )}
 
         {/* ── РЕЗЕРВНАЯ КОПИЯ ────────────────────────────────────────────── */}
         <SectionHeader label={t('settings.sectionBackup')} colors={colors} />
@@ -471,6 +507,15 @@ function makeStyles(th: AppTheme) {
     scroll:        { flex: 1 },
     scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
     card: { backgroundColor: colors.surface, borderRadius: radius.card, overflow: 'hidden' },
+    // Подсказка под тумблером уведомлений, когда разрешение не выдано.
+    notifPermHint: {
+      color:      colors.statusDue.text,
+      ...typography.labelSmall,
+      lineHeight: 16,
+      marginTop:  8,
+      marginLeft: 4,
+      marginRight: 4,
+    },
     bottomPad: { height: 40 },
     // TEMP: удалить после проверки push
     debugBtn:     { paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center' },

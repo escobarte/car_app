@@ -235,6 +235,8 @@ const en: TranslationKeys = {
     language:            'Language',
     darkTheme:           'Dark theme',
     notifications:       'Notifications',
+    notifPermDeniedHint:
+      'Notification permission was not granted. Enable it for this app in your phone settings.',
     exportData:          'Export data',
     importData:          'Import data',
     categories:          'Expense categories',

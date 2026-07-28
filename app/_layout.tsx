@@ -141,7 +141,8 @@ export default function RootLayout() {
   useEffect(() => {
     carRepo.setOdometerRecalcListener(() => {
       if (IS_EXPO_GO) return;
-      scheduleReminderNotifications().catch(() => {});
+      scheduleReminderNotifications()
+        .catch((e) => console.error('[notif] reschedule after odometer recalc', e));
     });
     return () => carRepo.setOdometerRecalcListener(null);
   }, []);
@@ -175,7 +176,8 @@ export default function RootLayout() {
       // в app/onboarding.tsx. Здесь только пересборка расписания для тех,
       // кто разрешение уже выдал.
       if (!IS_EXPO_GO) {
-        scheduleReminderNotifications().catch(() => {});
+        scheduleReminderNotifications()
+          .catch((e) => console.error('[notif] reschedule on bootstrap', e));
       }
 
       setIsReady(true);

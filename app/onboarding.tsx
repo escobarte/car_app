@@ -519,9 +519,14 @@ export default function OnboardingScreen() {
         const granted = await requestNotificationPermissions();
         // Расписание пересобираем сразу, иначе напоминания встанут
         // только со следующего запуска приложения.
-        if (granted) scheduleReminderNotifications().catch(() => {});
-      } catch {
-        /* нативный модуль недоступен — переход не блокируем */
+        if (granted) {
+          scheduleReminderNotifications()
+            .catch((e) => console.error('[notif] reschedule after onboarding', e));
+        }
+      } catch (e) {
+        // Нативный модуль недоступен — переход на дашборд не блокируем,
+        // но ошибку показываем: молчание здесь стоило бы «push не приходят».
+        console.error('[notif] onboarding permission request', e);
       }
     }
 

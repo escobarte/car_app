@@ -56,7 +56,10 @@ function loadN(): NotificationsModule | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     _notif = require('expo-notifications') as NotificationsModule;
-  } catch {
+  } catch (e) {
+    // Сюда попадаем только вне Expo Go (все вызовы за guard-ом isExpoGo),
+    // то есть это реальная проблема сборки, а не ожидаемое ограничение среды.
+    console.error('[notif] require(expo-notifications) failed', e);
     _notif = null;
   }
   return _notif;
@@ -119,8 +122,8 @@ export function setupNotificationHandler(): void {
         shouldSetBadge:   false,
       }),
     });
-  } catch {
-    /* нативный модуль недоступен — игнорируем */
+  } catch (e) {
+    console.error('[notif] setupNotificationHandler', e);
   }
 }
 
@@ -140,8 +143,31 @@ export async function requestNotificationPermissions(): Promise<boolean> {
     const { status } = await N.requestPermissionsAsync({
       ios: { allowAlert: true, allowBadge: false, allowSound: false },
     });
+    if (status !== 'granted') {
+      console.warn(`[notif] permission not granted (status=${status})`);
+    }
     return status === 'granted';
-  } catch {
+  } catch (e) {
+    console.error('[notif] requestNotificationPermissions', e);
+    return false;
+  }
+}
+
+/**
+ * Проверяет системное разрешение, НЕ запрашивая его (диалог не всплывает).
+ * Нужна экранам, которые показывают состояние уведомлений: разрешение можно
+ * отозвать в настройках телефона, и тогда флаг notifications_enabled в БД
+ * остаётся включённым, а push не приходят.
+ */
+export async function hasNotificationPermission(): Promise<boolean> {
+  if (isExpoGo()) return false;              // guard ②
+  try {
+    const N = loadN();                       // lazy require ③
+    if (!N) return false;
+    const { status } = await N.getPermissionsAsync();
+    return status === 'granted';
+  } catch (e) {
+    console.error('[notif] hasNotificationPermission', e);
     return false;
   }
 }
@@ -159,8 +185,8 @@ async function ensureAndroidChannel(): Promise<void> {
       vibrationPattern: [0, 200, 100, 200],
       lightColor:       '#3db5f5',
     });
-  } catch {
-    /* ignore */
+  } catch (e) {
+    console.error('[notif] ensureAndroidChannel', e);
   }
 }
 
@@ -187,13 +213,20 @@ export async function scheduleReminderNotifications(): Promise<void> {
     // ── Флаг notifications_enabled ─────────────────────────────────────────
     const settings = await settingsRepo.getSettings();
     if (!settings?.notifications_enabled) {
-      await N.cancelAllScheduledNotificationsAsync().catch(() => {});
+      // Осознанное состояние (тумблер в Settings), не ошибка — не логируем.
+      await N.cancelAllScheduledNotificationsAsync()
+        .catch((e) => console.error('[notif] cancelAllScheduledNotificationsAsync', e));
       return;
     }
 
     // ── Системное разрешение ───────────────────────────────────────────────
     const { status } = await N.getPermissionsAsync();
-    if (status !== 'granted') return;
+    if (status !== 'granted') {
+      // Главная причина «push не приходят»: флаг в БД включён, а системного
+      // разрешения нет. Раньше выходили молча — теперь видно в логах.
+      console.warn(`[notif] scheduling skipped: permission status=${status}`);
+      return;
+    }
 
     // ── Android-канал ──────────────────────────────────────────────────────
     await ensureAndroidChannel();
@@ -203,13 +236,20 @@ export async function scheduleReminderNotifications(): Promise<void> {
       carRepo.getCar(),
       reminderRepo.getAllReminders(),
     ]);
-    if (!car) return;
+    if (!car) {
+      console.warn('[notif] scheduling skipped: no car row');
+      return;
+    }
 
     // ── Снимаем старые уведомления этого движка ────────────────────────────
-    const scheduled = await N.getAllScheduledNotificationsAsync().catch(() => []);
+    const scheduled = await N.getAllScheduledNotificationsAsync().catch((e) => {
+      console.error('[notif] getAllScheduledNotificationsAsync', e);
+      return [];
+    });
     for (const notif of scheduled) {
       if (notif.identifier.startsWith('reminder-')) {
-        await N.cancelScheduledNotificationAsync(notif.identifier).catch(() => {});
+        await N.cancelScheduledNotificationAsync(notif.identifier)
+          .catch((e) => console.error(`[notif] cancel ${notif.identifier}`, e));
       }
     }
 
@@ -247,7 +287,7 @@ export async function scheduleReminderNotifications(): Promise<void> {
           identifier: notifId(reminder.id),
           content: { title: reminder.title, body, data: { reminderId: reminder.id } },
           trigger: dailyAt9,
-        }).catch(() => {});
+        }).catch((e) => console.error(`[notif] schedule mileage ${notifId(reminder.id)}`, e));
         continue;
       }
 
@@ -281,7 +321,7 @@ export async function scheduleReminderNotifications(): Promise<void> {
             data:  { reminderId: reminder.id },
           },
           trigger: calendarAt(warnDate),
-        }).catch(() => {});
+        }).catch((e) => console.error(`[notif] schedule time/ok ${notifId(reminder.id)}`, e));
       } else if (row.status === 'soon') {
         await N.scheduleNotificationAsync({
           identifier: notifId(reminder.id),
@@ -291,7 +331,7 @@ export async function scheduleReminderNotifications(): Promise<void> {
             data:  { reminderId: reminder.id },
           },
           trigger: calendarAt(dueDate),
-        }).catch(() => {});
+        }).catch((e) => console.error(`[notif] schedule time/soon ${notifId(reminder.id)}`, e));
       } else {
         // due — уже просрочено, напоминаем каждый день в 9:00
         await N.scheduleNotificationAsync({
@@ -302,10 +342,10 @@ export async function scheduleReminderNotifications(): Promise<void> {
             data:  { reminderId: reminder.id },
           },
           trigger: dailyAt9,
-        }).catch(() => {});
+        }).catch((e) => console.error(`[notif] schedule time/due ${notifId(reminder.id)}`, e));
       }
     }
-  } catch {
-    /* любая непойманная ошибка — тихо игнорируем */
+  } catch (e) {
+    console.error('[notif] scheduleReminderNotifications', e);
   }
 }
