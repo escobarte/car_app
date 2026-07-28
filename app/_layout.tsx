@@ -13,7 +13,6 @@ import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import {
   setupNotificationHandler,
-  requestNotificationPermissions,
   scheduleReminderNotifications,
 } from '@/notifications/engine';
 
@@ -63,11 +62,16 @@ type BootstrapCtx = {
   importResult: ImportResult | null;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
+  /** true — онбординг ещё ни разу не пройден (первый запуск приложения).
+   *  По нему решается, показывать ли запрос разрешения на уведомления:
+   *  при повторном прохождении из настроек — не показывать. */
+  isFirstRun: boolean;
 };
 const BootstrapContext = createContext<BootstrapCtx>({
   importResult: null,
   completeOnboarding: () => {},
   resetOnboarding: () => {},
+  isFirstRun: false,
 });
 export function useBootstrap() { return useContext(BootstrapContext); }
 
@@ -86,7 +90,10 @@ function NavShell({
   const resetOnboarding    = useCallback(() => setOnboardingCompleted(false), []);
 
   return (
-    <BootstrapContext.Provider value={{ importResult, completeOnboarding, resetOnboarding }}>
+    <BootstrapContext.Provider
+      value={{ importResult, completeOnboarding, resetOnboarding,
+               isFirstRun: !initialOnboardingCompleted }}
+    >
       <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
         <Stack>
           <Stack.Screen name="onboarding"       options={{ headerShown: false, gestureEnabled: false }} />
@@ -147,13 +154,13 @@ export default function RootLayout() {
         await fuelRepo.recalcAllFullTankConsumption();
       }
 
+      // Разрешение на уведомления здесь НЕ запрашивается: системный диалог
+      // на старте даёт низкий процент согласий и всплывает поверх splash.
+      // Его показывает последний шаг онбординга — см. handleFinish()
+      // в app/onboarding.tsx. Здесь только пересборка расписания для тех,
+      // кто разрешение уже выдал.
       if (!IS_EXPO_GO) {
-        try {
-          await requestNotificationPermissions();
-          scheduleReminderNotifications().catch(() => {});
-        } catch {
-          /* нативный модуль недоступен */
-        }
+        scheduleReminderNotifications().catch(() => {});
       }
 
       setIsReady(true);

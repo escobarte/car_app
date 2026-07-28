@@ -9,6 +9,12 @@
 
 ---
 
+## 2026-07-28 (2)
+- Onboarding: запрос разрешения на уведомления убран со старта приложения и перенесён в конец онбординга — на кнопку «Поехали», перед переходом на дашборд. Диалог всплывает поверх тёмного экрана 3, а не поверх splash. Спрашивается только при первом прохождении (флаг isFirstRun в BootstrapContext); переход выполняется независимо от ответа. При согласии расписание напоминаний пересобирается сразу.
+- Onboarding: отменён подъём футера над клавиатурой на экране 2 — KeyboardAvoidingView удалён, футер уходит под клавиатуру, кнопка больше не наезжает на поля. Футер сведён в один компонент с общим нижним отступом (safe-area inset + onboarding.sizes.footerPadBottom), SafeAreaView на слайдах ограничен edges top/left/right — нижний inset больше не учитывается дважды, кнопка стоит на одном уровне на всех трёх экранах.
+- файлы: app/onboarding.tsx, app/_layout.tsx, constants/theme.ts
+- статус: ждёт проверки на телефоне
+
 ## 2026-07-28
 - Onboarding: шрифт заменён с Helvetica Neue на Inter (Inter-Regular.ttf / Inter-Medium.ttf добавлены в assets/fonts/). Правка только в constants/fonts.ts — theme.ts и onboarding.tsx читают токены оттуда и не менялись. Строк 'HelveticaNeue-*' в коде не осталось.
 - файлы: constants/fonts.ts, assets/fonts/README.md

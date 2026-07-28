@@ -4,7 +4,6 @@ import {
   BackHandler,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,13 +16,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { useBootstrap } from '@/app/_layout';
 import { useThemeCtx } from '@/contexts/theme-context';
 import { AppTheme } from '@/constants/theme';
 import { settingsRepo, carRepo } from '@/db';
+import {
+  requestNotificationPermissions,
+  scheduleReminderNotifications,
+} from '@/notifications/engine';
 import OnboardingBackground from '@/components/OnboardingBackground';
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
@@ -98,9 +101,15 @@ function GradientButton({
 }
 
 // ─── Футер: пагинация + кнопка, единый блок внизу экрана ─────────────────────
+// Один компонент на все три экрана, поэтому кнопка стоит на одном уровне.
+//
+// Нижний отступ считается ЗДЕСЬ: safe-area inset + footerPadBottom из темы.
+// SafeAreaView на слайдах ограничен edges={['top','left','right']}, иначе
+// нижний inset применился бы дважды — на разных экранах это и давало
+// расхождение по высоте кнопки.
+//
 // marginTop:'auto' прижимает футер к нижней кромке независимо от того,
-// сколько места занял контент выше. Не absolute — иначе KeyboardAvoidingView
-// на экране 2 не смог бы поднять его над клавиатурой.
+// сколько места занял контент выше.
 
 function Footer({
   current,
@@ -111,8 +120,9 @@ function Footer({
   th: AppTheme;
   children: React.ReactNode;
 }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={g.footer}>
+    <View style={[g.footer, { paddingBottom: insets.bottom + th.onboarding.sizes.footerPadBottom }]}>
       <Pagination current={current} th={th} />
       {children}
     </View>
@@ -144,7 +154,7 @@ function SlideWelcome({
       <OnboardingBackground th={th} accent="blue" width={screenW} height={screenH} />
 
       {/* СЛОЙ 2 — контент */}
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
         <View style={[g.content, { alignItems: 'center', justifyContent: 'center', paddingBottom: 60 }]}>
           {/* Лого со свечением-подложкой */}
           <View style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -245,107 +255,97 @@ function SlideCar({
       {/* СЛОЙ 1 — фон */}
       <OnboardingBackground th={th} accent="blue" width={screenW} height={screenH} />
 
-      {/* СЛОЙ 2 — контент */}
-      {/* behavior='padding' на ОБЕИХ платформах.
-          'height' на Android вычитал высоту клавиатуры вслепую поверх того,
-          что окно уже ужалось по adjustResize из манифеста, — отсюда двойное
-          сжатие и прыжок футера к центру. 'padding' считает отступ из
-          фактической геометрии (низ своего фрейма минус верх клавиатуры),
-          поэтому корректен и когда окно ужимается, и когда нет.
-          keyboardVerticalOffset=0: экран без хедера, идёт под статус-бар
-          (edgeToEdge). Если на телефоне кнопка не долезет до клавиатуры —
-          крутить надо именно эту величину. */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior="padding"
-        keyboardVerticalOffset={0}
-      >
-        <SafeAreaView style={{ flex: 1 }}>
-          <View style={[g.content, { paddingTop: 36 }]}>
-            {/* Надзаголовок */}
-            <Text style={[g.stepLabel, typography.onboarding.stepLabel, fonts.onboarding.medium,
-                          { color: colors.accent }]}>
-              {t('onboarding.step_of')}
-            </Text>
+      {/* СЛОЙ 2 — контент.
+          KeyboardAvoidingView здесь сознательно НЕ используется: футер
+          остаётся внизу и уходит под клавиатуру, кнопка не наезжает на поля.
+          Поля ввода — вверху экрана и остаются видимыми. Клавиатура
+          закрывается тапом мимо поля (keyboardShouldPersistTaps="handled"
+          на пейджере) или кнопкой Done. */}
+      <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
+        <View style={[g.content, { paddingTop: 36 }]}>
+          {/* Надзаголовок */}
+          <Text style={[g.stepLabel, typography.onboarding.stepLabel, fonts.onboarding.medium,
+                        { color: colors.accent }]}>
+            {t('onboarding.step_of')}
+          </Text>
 
-            {/* Заголовок и подпись */}
-            <Text style={[g.slideTitle, typography.onboarding.title, fonts.onboarding.medium,
-                          { color: colors.textPrimary, marginTop: 10 }]}>
-              {t('onboarding.car_title')}
-            </Text>
-            <Text style={[g.slideSubtitle, typography.onboarding.subtitle, fonts.onboarding.regular,
-                          { color: colors.textSecondary, marginTop: 6 }]}>
-              {t('onboarding.car_subtitle')}
-            </Text>
+          {/* Заголовок и подпись */}
+          <Text style={[g.slideTitle, typography.onboarding.title, fonts.onboarding.medium,
+                        { color: colors.textPrimary, marginTop: 10 }]}>
+            {t('onboarding.car_title')}
+          </Text>
+          <Text style={[g.slideSubtitle, typography.onboarding.subtitle, fonts.onboarding.regular,
+                        { color: colors.textSecondary, marginTop: 6 }]}>
+            {t('onboarding.car_subtitle')}
+          </Text>
 
-            {/* Поле: Название машины */}
-            <Text style={[g.fieldLabel, typography.onboarding.fieldLabel, fonts.onboarding.regular,
-                          { color: colors.textMuted, marginTop: 28 }]}>
-              {t('onboarding.name_label')}
-            </Text>
-            <View style={[
-              g.fieldWrap, fieldBox,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}>
-              <Ionicons name="car-outline" size={sizes.fieldIcon} color={colors.textSecondary} style={{ marginRight: 14 }} />
-              <TextInput
-                value={carName}
-                onChangeText={setCarName}
-                placeholder={t('onboarding.name_placeholder')}
-                placeholderTextColor={colors.textWeak}
-                style={[g.fieldInput, typography.onboarding.fieldInput, fonts.onboarding.regular,
-                        { color: colors.textPrimary }]}
-                selectionColor={colors.accent}
-                returnKeyType="next"
-                maxLength={40}
-              />
-            </View>
-
-            {/* Поле: Пробег */}
-            <Text style={[g.fieldLabel, typography.onboarding.fieldLabel, fonts.onboarding.regular,
-                          { color: colors.textMuted, marginTop: 18 }]}>
-              {t('onboarding.odometer_label')}
-            </Text>
-            <View style={[
-              g.fieldWrap, fieldBox,
-              {
-                backgroundColor: colors.surface,
-                borderColor:     odoFocused ? colors.borderAccent : colors.border,
-              },
-            ]}>
-              <Ionicons
-                name="speedometer-outline"
-                size={sizes.fieldIcon}
-                color={odoFocused ? colors.accent : colors.textSecondary}
-                style={{ marginRight: 14 }}
-              />
-              <TextInput
-                value={odometer}
-                onChangeText={(txt) => setOdometer(txt.replace(/[^0-9]/g, ''))}
-                placeholder="0"
-                placeholderTextColor={colors.textWeak}
-                keyboardType="numeric"
-                style={[g.fieldInput, typography.onboarding.fieldInput, fonts.onboarding.regular,
-                        { color: colors.textPrimary }]}
-                selectionColor={colors.accent}
-                onFocus={() => setOdoFocused(true)}
-                onBlur={() => setOdoFocused(false)}
-                returnKeyType="done"
-                maxLength={7}
-              />
-            </View>
+          {/* Поле: Название машины */}
+          <Text style={[g.fieldLabel, typography.onboarding.fieldLabel, fonts.onboarding.regular,
+                        { color: colors.textMuted, marginTop: 28 }]}>
+            {t('onboarding.name_label')}
+          </Text>
+          <View style={[
+            g.fieldWrap, fieldBox,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}>
+            <Ionicons name="car-outline" size={sizes.fieldIcon} color={colors.textSecondary} style={{ marginRight: 14 }} />
+            <TextInput
+              value={carName}
+              onChangeText={setCarName}
+              placeholder={t('onboarding.name_placeholder')}
+              placeholderTextColor={colors.textWeak}
+              style={[g.fieldInput, typography.onboarding.fieldInput, fonts.onboarding.regular,
+                      { color: colors.textPrimary }]}
+              selectionColor={colors.accent}
+              returnKeyType="next"
+              maxLength={40}
+            />
           </View>
 
-          <Footer current={currentPage} th={th}>
-            <GradientButton
-              label={t('onboarding.next')}
-              onPress={onNext}
-              disabled={!odoValid}
-              th={th}
+          {/* Поле: Пробег */}
+          <Text style={[g.fieldLabel, typography.onboarding.fieldLabel, fonts.onboarding.regular,
+                        { color: colors.textMuted, marginTop: 18 }]}>
+            {t('onboarding.odometer_label')}
+          </Text>
+          <View style={[
+            g.fieldWrap, fieldBox,
+            {
+              backgroundColor: colors.surface,
+              borderColor:     odoFocused ? colors.borderAccent : colors.border,
+            },
+          ]}>
+            <Ionicons
+              name="speedometer-outline"
+              size={sizes.fieldIcon}
+              color={odoFocused ? colors.accent : colors.textSecondary}
+              style={{ marginRight: 14 }}
             />
-          </Footer>
-        </SafeAreaView>
-      </KeyboardAvoidingView>
+            <TextInput
+              value={odometer}
+              onChangeText={(txt) => setOdometer(txt.replace(/[^0-9]/g, ''))}
+              placeholder="0"
+              placeholderTextColor={colors.textWeak}
+              keyboardType="numeric"
+              style={[g.fieldInput, typography.onboarding.fieldInput, fonts.onboarding.regular,
+                      { color: colors.textPrimary }]}
+              selectionColor={colors.accent}
+              onFocus={() => setOdoFocused(true)}
+              onBlur={() => setOdoFocused(false)}
+              returnKeyType="done"
+              maxLength={7}
+            />
+          </View>
+        </View>
+
+        <Footer current={currentPage} th={th}>
+          <GradientButton
+            label={t('onboarding.next')}
+            onPress={onNext}
+            disabled={!odoValid}
+            th={th}
+          />
+        </Footer>
+      </SafeAreaView>
     </View>
   );
 }
@@ -369,10 +369,10 @@ function SlideDone({
   const { colors, onboarding, fonts, typography, shadows } = th;
   const { sizes } = onboarding;
 
-  const tips: Array<{
+  const tips: {
     icon: React.ComponentProps<typeof Ionicons>['name'];
     key:  'tip_add' | 'tip_service' | 'tip_backup';
-  }> = [
+  }[] = [
     { icon: 'add',                    key: 'tip_add'     },
     { icon: 'construct-outline',      key: 'tip_service' },
     { icon: 'cloud-download-outline', key: 'tip_backup'  },
@@ -384,7 +384,7 @@ function SlideDone({
       <OnboardingBackground th={th} accent="green" width={screenW} height={screenH} />
 
       {/* СЛОЙ 2 — контент */}
-      <SafeAreaView style={{ flex: 1 }}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
         <View style={[g.content, { paddingTop: 44 }]}>
           {/* Круг с галочкой */}
           <View style={{ alignItems: 'center' }}>
@@ -455,7 +455,7 @@ export default function OnboardingScreen() {
   const { th, isDark } = useThemeCtx();
   const { t } = useTranslation();
   const { width: screenW, height: screenH } = useWindowDimensions();
-  const { completeOnboarding } = useBootstrap();
+  const { completeOnboarding, isFirstRun } = useBootstrap();
 
   const [currentPage, setCurrentPage] = useState(0);
   const [carName,     setCarName]     = useState('');
@@ -505,6 +505,24 @@ export default function OnboardingScreen() {
     const odo  = parseInt(odometer, 10);
     await carRepo.updateCar({ name, current_odometer: isNaN(odo) ? 0 : odo });
     await settingsRepo.updateSettings({ onboarding_completed: 1 });
+
+    // Разрешение на уведомления — здесь, а не на старте приложения:
+    // системный диалог всплывает поверх тёмного экрана 3, когда польза
+    // от уведомлений уже объяснена. Только при первом прохождении:
+    // при повторном запуске онбординга из настроек не спрашиваем.
+    // Переход на дашборд выполняется в любом случае — и при отказе, и при
+    // ошибке нативного модуля.
+    if (isFirstRun) {
+      try {
+        const granted = await requestNotificationPermissions();
+        // Расписание пересобираем сразу, иначе напоминания встанут
+        // только со следующего запуска приложения.
+        if (granted) scheduleReminderNotifications().catch(() => {});
+      } catch {
+        /* нативный модуль недоступен — переход не блокируем */
+      }
+    }
+
     completeOnboarding();
     router.replace('/(tabs)');
   }
@@ -582,7 +600,7 @@ const g = StyleSheet.create({
   footer: {
     marginTop: 'auto',      // прижимает футер к низу
     paddingHorizontal: 22,
-    paddingBottom: 32,
+    // paddingBottom задаётся в компоненте Footer: safe-area + токен темы
   },
   paginationRow: {
     flexDirection: 'row',

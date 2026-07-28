@@ -136,6 +136,9 @@ export const darkTheme = {
       tipIconBox:  37,
       tipIconBoxR: 12,
       tipIcon:     18,
+      // Отступ футера от нижней кромки. Прибавляется к safe-area inset,
+      // одинаков на всех трёх экранах — кнопка стоит на одном уровне.
+      footerPadBottom: 32,
     },
   },
 
