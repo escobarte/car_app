@@ -45,7 +45,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { onboardingFontAssets } from '@/constants/fonts';
 import { darkTheme } from '@/constants/theme';
-import { initDatabase, settingsRepo, fuelRepo } from '@/db';
+import { initDatabase, settingsRepo, fuelRepo, carRepo } from '@/db';
 import { importLegacyData, ImportResult } from '@/db/legacy-import';
 import i18n, { isSupportedLanguage } from '@/i18n';
 import { AppThemeProvider, useThemeCtx } from '@/contexts/theme-context';
@@ -131,6 +131,20 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontError) console.error('[fonts]', fontError);
   }, [fontError]);
+
+  // Пере-оценка статусов регламентов после каждого пересчёта одометра
+  // (ТЗ 6.3). Сами статусы не хранятся — считаются на лету в
+  // utils/reminders.ts и перерисовываются экранами. Пересобрать нужно
+  // расписание уведомлений: оно зависит от тех же статусов.
+  // Колбэк, а не прямой импорт — иначе слой БД зависел бы от
+  // notifications/engine, который сам импортирует @/db (цикл).
+  useEffect(() => {
+    carRepo.setOdometerRecalcListener(() => {
+      if (IS_EXPO_GO) return;
+      scheduleReminderNotifications().catch(() => {});
+    });
+    return () => carRepo.setOdometerRecalcListener(null);
+  }, []);
 
   useEffect(() => {
     async function bootstrap() {

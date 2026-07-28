@@ -503,7 +503,9 @@ export default function OnboardingScreen() {
     Keyboard.dismiss();
     const name = carName.trim() || (t('onboarding.name_placeholder') as string);
     const odo  = parseInt(odometer, 10);
-    await carRepo.updateCar({ name, current_odometer: isNaN(odo) ? 0 : odo });
+    // base_odometer — отправная точка; current_odometer из него пересчитается
+    await carRepo.updateCar({ name });
+    await carRepo.setBaseOdometer(isNaN(odo) ? 0 : odo);
     await settingsRepo.updateSettings({ onboarding_completed: 1 });
 
     // Разрешение на уведомления — здесь, а не на старте приложения:

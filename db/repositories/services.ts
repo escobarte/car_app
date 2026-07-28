@@ -3,7 +3,7 @@
  */
 
 import { openDatabase, ServiceRecord } from '../database';
-import { syncOdometer } from './cars';
+import { recalcCurrentOdometer } from './cars';
 
 /** Все записи обслуживания, от новых к старым. */
 export async function getAllServiceRecords(): Promise<ServiceRecord[]> {
@@ -45,12 +45,13 @@ export async function addServiceRecord(
     entry.note
   );
 
-  await syncOdometer(entry.odometer);
+  await recalcCurrentOdometer();
   return result.lastInsertRowId;
 }
 
-/** Удалить запись обслуживания по id. */
+/** Удалить запись обслуживания по id. Пробег машины пересчитывается. */
 export async function deleteServiceRecord(id: number): Promise<void> {
   const db = await openDatabase();
   await db.runAsync('DELETE FROM service_record WHERE id = ?;', id);
+  await recalcCurrentOdometer();
 }

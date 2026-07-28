@@ -116,20 +116,15 @@ export default function AddReminderScreen() {
           warn_before:   wb,
         });
       } else {
-        const today = new Date();
-        const y = today.getFullYear();
-        const m = String(today.getMonth() + 1).padStart(2, '0');
-        const d = String(today.getDate()).padStart(2, '0');
-        const todayStr = `${y}-${m}-${d}`;
-
+        // last_odometer / last_date не передаём: репозиторий сам ставит
+        // текущий пробег и сегодняшнюю дату, чтобы новый регламент
+        // стартовал «в норме» с полным интервалом (ТЗ 6.3).
         await reminderRepo.addReminder({
           car_id:        1,
           title:         name.trim(),
           type,
           interval_km:   type === 'mileage' ? iv   : null,
           interval_days: type === 'time'    ? iv   : null,
-          last_odometer: 0,
-          last_date:     todayStr,
           warn_before:   wb,
         });
       }

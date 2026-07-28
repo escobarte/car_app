@@ -9,6 +9,11 @@ export const CREATE_TABLE_CAR = `
   CREATE TABLE IF NOT EXISTS car (
     id               INTEGER PRIMARY KEY NOT NULL,
     name             TEXT    NOT NULL DEFAULT 'Моя машина',
+    -- Базовый пробег: введён в онбординге или вручную в настройках.
+    -- Отправная точка, ниже которой current_odometer не опускается.
+    base_odometer    INTEGER NOT NULL DEFAULT 0,
+    -- Производное значение: MAX(base_odometer, все odometer в записях).
+    -- Пересчитывается carRepo.recalcCurrentOdometer(), руками не писать.
     current_odometer INTEGER NOT NULL DEFAULT 0,
     fuel_unit        TEXT    NOT NULL DEFAULT 'литр',
     currency         TEXT    NOT NULL DEFAULT 'MDL'

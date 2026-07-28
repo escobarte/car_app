@@ -168,9 +168,12 @@ export async function importDatabase(): Promise<ImportResult> {
 
       // Обновляем машину и настройки (они уже существуют с id=1)
       if (backup.car) {
+        // base_odometer в файле бэкапа нет (формат не менялся). Берём
+        // current_odometer из бэкапа: на момент выгрузки это и был
+        // достоверный пробег машины. Ниже него пересчёт не опустится.
         await txn.runAsync(
-          `UPDATE car SET name=?, current_odometer=?, fuel_unit=?, currency=? WHERE id=1;`,
-          backup.car.name, backup.car.current_odometer,
+          `UPDATE car SET name=?, base_odometer=?, current_odometer=?, fuel_unit=?, currency=? WHERE id=1;`,
+          backup.car.name, backup.car.current_odometer, backup.car.current_odometer,
           backup.car.fuel_unit, backup.car.currency,
         );
       }

@@ -26,9 +26,11 @@ export async function cleanupTestData(): Promise<CleanupResult> {
   await db.runAsync('DELETE FROM fuel_entry WHERE odometer > 205071;');
 
   const TARGET_ODO = 205071;
+  // base_odometer тоже: current_odometer производный, его перетёр бы
+  // следующий пересчёт (carRepo.recalcCurrentOdometer).
   await db.runAsync(
-    'UPDATE car SET current_odometer = ? WHERE id = 1;',
-    TARGET_ODO
+    'UPDATE car SET base_odometer = ?, current_odometer = ? WHERE id = 1;',
+    TARGET_ODO, TARGET_ODO
   );
 
   const remainRow = await db.getFirstAsync<{ cnt: number }>(

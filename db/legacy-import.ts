@@ -14,7 +14,7 @@ import { openDatabase } from './database';
 import { addFuelEntry }  from './repositories/fuel';
 import { addExpense }    from './repositories/expenses';
 import { getAllCategories } from './repositories/categories';
-import { syncOdometer }  from './repositories/cars';
+import { recalcCurrentOdometer } from './repositories/cars';
 
 // ─── Заправки (20 записей, сверены 27.05.2026) ──────────────────────────────
 type FuelSeed = {
@@ -151,10 +151,9 @@ export async function importLegacyData(): Promise<ImportResult> {
     expenseCount++;
   }
 
-  // 3. Явно выставляем максимальный пробег из сидов на случай, если
-  //    syncOdometer что-то пропустил при частичных заправках.
-  const maxOdo = FUEL_SEEDS.reduce((m, f) => Math.max(m, f.odometer), 0);
-  await syncOdometer(maxOdo);
+  // 3. Финальный пересчёт пробега: возьмёт максимум из базового пробега
+  //    и всех вставленных записей.
+  await recalcCurrentOdometer();
 
   // skipped = ничего нового не добавили (для отладочного экрана db-check).
   return { fuelCount, expenseCount, skipped: fuelCount === 0 && expenseCount === 0 };

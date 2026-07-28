@@ -163,11 +163,14 @@ export default function SettingsScreen() {
       return;
     }
     try {
-      await carRepo.updateCar({ current_odometer: num });
-      setOdometer(num);
+      // Правим именно базовый пробег: current_odometer производный и его
+      // перетёр бы следующий пересчёт. setBaseOdometer сразу пересчитывает
+      // и возвращает актуальное значение.
+      const actual = await carRepo.setBaseOdometer(num);
+      setOdometer(actual);
       setShowOdoModal(false);
     } catch (e) {
-      console.error('[Settings] updateCar odometer', e);
+      console.error('[Settings] setBaseOdometer', e);
     }
   }
 

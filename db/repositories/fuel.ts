@@ -3,7 +3,7 @@
  */
 
 import { openDatabase, FuelEntry } from '../database';
-import { syncOdometer } from './cars';
+import { recalcCurrentOdometer } from './cars';
 
 /** Все заправки, от новых к старым. */
 export async function getAllFuelEntries(): Promise<FuelEntry[]> {
@@ -111,14 +111,15 @@ export async function addFuelEntry(
     ]
   );
 
-  await syncOdometer(entry.odometer);
+  await recalcCurrentOdometer();
   return result.lastInsertRowId;
 }
 
-/** Удалить заправку по id. */
+/** Удалить заправку по id. Пробег машины пересчитывается. */
 export async function deleteFuelEntry(id: number): Promise<void> {
   const db = await openDatabase();
   await db.runAsync('DELETE FROM fuel_entry WHERE id = ?;', id);
+  await recalcCurrentOdometer();
 }
 
 /** Получить заправку по id. */
@@ -127,7 +128,10 @@ export async function getFuelEntryById(id: number): Promise<FuelEntry | null> {
   return db.getFirstAsync<FuelEntry>('SELECT * FROM fuel_entry WHERE id = ?;', id);
 }
 
-/** Обновить поля заправки. Пересчёт consumption не производится автоматически. */
+/**
+ * Обновить поля заправки. Пробег машины пересчитывается.
+ * Пересчёт consumption не производится автоматически.
+ */
 export async function updateFuelEntry(
   id: number,
   fields: Partial<Omit<FuelEntry, 'id' | 'car_id'>>
@@ -143,6 +147,7 @@ export async function updateFuelEntry(
     `UPDATE fuel_entry SET ${setClauses} WHERE id = ?;`,
     ...values, id
   );
+  await recalcCurrentOdometer();
 }
 
 /**

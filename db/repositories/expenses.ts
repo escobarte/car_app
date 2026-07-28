@@ -3,7 +3,7 @@
  */
 
 import { openDatabase, Expense } from '../database';
-import { syncOdometer } from './cars';
+import { recalcCurrentOdometer } from './cars';
 
 /** Все расходы, от новых к старым. */
 export async function getAllExpenses(): Promise<Expense[]> {
@@ -43,14 +43,11 @@ export async function addExpense(
     [entry.car_id, entry.category_id, entry.date, entry.odometer ?? null, entry.amount, entry.description]
   );
 
-  if (entry.odometer != null) {
-    await syncOdometer(entry.odometer);
-  }
-
+  await recalcCurrentOdometer();
   return result.lastInsertRowId;
 }
 
-/** Обновить расход. */
+/** Обновить расход. Пробег машины пересчитывается. */
 export async function updateExpense(
   id: number,
   fields: Partial<Omit<Expense, 'id' | 'car_id'>>
@@ -66,6 +63,7 @@ export async function updateExpense(
     `UPDATE expense SET ${setClauses} WHERE id = ?;`,
     ...values, id
   );
+  await recalcCurrentOdometer();
 }
 
 /** Получить расход по id. */
@@ -74,8 +72,9 @@ export async function getExpenseById(id: number): Promise<Expense | null> {
   return db.getFirstAsync<Expense>('SELECT * FROM expense WHERE id = ?;', id);
 }
 
-/** Удалить расход по id. */
+/** Удалить расход по id. Пробег машины пересчитывается. */
 export async function deleteExpense(id: number): Promise<void> {
   const db = await openDatabase();
   await db.runAsync('DELETE FROM expense WHERE id = ?;', id);
+  await recalcCurrentOdometer();
 }

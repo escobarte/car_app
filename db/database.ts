@@ -16,6 +16,9 @@ import { ALL_SCHEMAS } from './schema';
 export type Car = {
   id: number;
   name: string;
+  /** Базовый пробег (онбординг / ручная правка в настройках). */
+  base_odometer: number;
+  /** Производное: MAX(base_odometer, все odometer в записях). См. ТЗ 5.1. */
   current_odometer: number;
   fuel_unit: string;
   currency: string;
@@ -124,7 +127,7 @@ export async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
  * Текущая версия схемы. Увеличивать при каждой новой миграции.
  * SCHEMA_VERSION === MIGRATIONS.length.
  */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /**
  * Шаги миграции: индекс 0 = переход v0→v1, индекс 1 = v1→v2, и т.д.
@@ -164,6 +167,28 @@ const MIGRATIONS: Array<(txn: Txn) => Promise<void>> = [
                EXISTS (SELECT 1 FROM service_record LIMIT 1)
              );
     `);
+  },
+
+  // ── v1 → v2 : базовый пробег машины (ТЗ 5.1) ────────────────────────────
+  // До этого current_odometer только рос (syncOdometer поднимал его при
+  // каждой записи и никогда не опускал). После удаления записи он оставался
+  // завышенным, а регламенты — с неверным статусом. Теперь current_odometer
+  // производный: MAX(base_odometer, все odometer в записях).
+  async (txn) => {
+    const col = await txn.getFirstAsync<{ cid: number }>(
+      `SELECT cid FROM pragma_table_info('car') WHERE name='base_odometer';`
+    );
+    if (!col) {
+      await txn.execAsync(
+        `ALTER TABLE car ADD COLUMN base_odometer INTEGER NOT NULL DEFAULT 0;`
+      );
+      // Восстановить настоящий базовый пробег задним числом невозможно:
+      // он не хранился. Берём текущий current_odometer — так значение на
+      // экране не меняется, и одометр не «просядет» после удаления записи.
+      await txn.runAsync(
+        `UPDATE car SET base_odometer = current_odometer WHERE id = 1;`
+      );
+    }
   },
 ];
 
@@ -215,8 +240,8 @@ export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru', isClean =
 
   // 3. Стартовая запись машины (id = 1, только при первом запуске)
   await db.runAsync(
-    `INSERT OR IGNORE INTO car (id, name, current_odometer, fuel_unit, currency)
-     VALUES (1, 'Моя машина', 0, 'литр', 'MDL');`
+    `INSERT OR IGNORE INTO car (id, name, base_odometer, current_odometer, fuel_unit, currency)
+     VALUES (1, 'Моя машина', 0, 0, 'литр', 'MDL');`
   );
 
   // 4. Стартовые настройки (id = 1) — язык берётся с устройства
@@ -242,7 +267,9 @@ export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru', isClean =
       await db.runAsync(
         `INSERT OR IGNORE INTO reminder
            (car_id, title, type, interval_km, interval_days, last_odometer, last_date, warn_before)
-         SELECT 1, ?, ?, ?, ?, 0, date('now'), ?
+         -- ТЗ 6.3: новый регламент стартует «в норме», с полным интервалом,
+         -- поэтому отсчёт идёт от текущего пробега, а не от нуля.
+         SELECT 1, ?, ?, ?, ?, (SELECT current_odometer FROM car WHERE id = 1), date('now'), ?
          WHERE NOT EXISTS (SELECT 1 FROM reminder WHERE car_id = 1 AND title = ?);`,
         r.title, r.type, r.interval_km, r.interval_days, r.warn_before, r.title
       );

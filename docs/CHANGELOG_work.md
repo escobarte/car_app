@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-07-28 (5)
+- ТЗ 6.3: новый регламент больше не создаётся «просроченным». last_odometer стартовал с 0, поэтому пробег машины сразу съедал весь интервал. Значения по умолчанию перенесены в reminderRepo.addReminder (текущий пробег + сегодня), чтобы правило нельзя было обойти с любого вызова. Стартовые регламенты-сиды в database.ts тоже стартовали с нуля — исправлено.
+- ТЗ 5.1: единый пересчёт carRepo.recalcCurrentOdometer() = MAX(base_odometer, все odometer в fuel_entry/expense/service_record). Прежний syncOdometer умел только повышать пробег и после удаления записи оставлял его завышенным. Вызывается после каждого добавления/редактирования/удаления во всех трёх репозиториях (update/delete раньше вообще не трогали пробег).
+- Добавлена колонка car.base_odometer + миграция v1→v2 (сеет base = current, значение на экране не меняется). Ручной ввод пробега (онбординг, настройки, dev-tools) пишет base_odometer; current_odometer теперь производный. Статусы регламентов нигде не хранятся и пересчитываются на лету, поэтому после пересчёта одометра пересобирается только расписание уведомлений — через слушатель, зарегистрированный в _layout.tsx (прямой импорт дал бы цикл db → notifications → db).
+- Проверено на SQLite: +76 → 205147, удаление → 205071 (вернулся), правка вниз → снижается, expense с NULL-пробегом в максимум не идёт.
+- файлы: db/schema.ts, db/database.ts, db/repositories/cars.ts, db/repositories/fuel.ts, db/repositories/expenses.ts, db/repositories/services.ts, db/repositories/reminders.ts, db/legacy-import.ts, db/backup.ts, db/dev-tools.ts, app/_layout.tsx, app/add-reminder.tsx, app/settings.tsx, app/onboarding.tsx
+- статус: ждёт проверки на телефоне
+
 ## 2026-07-28 (4)
 - Починена сборка: aapt падал на processReleaseResources из-за висячей ссылки @drawable/splashscreen_logo. Причина — expo-splash-screen пересоздаёт стиль Theme.App.SplashScreen и прописывает эту ссылку безусловно, даже когда image в конфиге нет и drawable не генерируется (PNG были удалены prebuild'ом).
 - withDarkWindowBackground перемещён в app.config.js ДО expo-splash-screen: моды выполняются в обратном порядке регистрации, поэтому раньше плагин отрабатывал первым и его правки затирались. В плагин добавлена сплошная зачистка любых ссылок на splashscreen_logo. В styles.xml ссылка заменена на @android:color/transparent, windowSplashScreenBehavior — с icon_preferred на default. Висячих ссылок: 0 (в values и values-night).
