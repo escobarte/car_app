@@ -10,6 +10,9 @@ module.exports = {
   scheme:      'carapp',
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
+  // Фон рут-вью под React-слоем (применяет expo-system-ui). Тот же тёмный,
+  // что у splash и у фона приложения — чтобы не мелькал белый кадр.
+  backgroundColor: '#05050a',
 
   ios: {
     supportsTablet: true,
@@ -37,11 +40,11 @@ module.exports = {
     [
       'expo-splash-screen',
       {
-        image:           './assets/splash-icon.png',
-        imageWidth:      200,
-        resizeMode:      'contain',
-        backgroundColor: '#ffffff',
-        dark: { backgroundColor: '#000000' },
+        // Без картинки: splash — ровная тёмная заливка под цвет фона
+        // приложения (constants/theme.ts → onboarding.bgBase). Оба режима
+        // тёмные, иначе в светлой системной теме мелькает белый кадр.
+        backgroundColor: '#05050a',
+        dark: { backgroundColor: '#05050a' },
       },
     ],
     'expo-sqlite',
@@ -68,6 +71,7 @@ module.exports = {
       },
     ],
     './plugins/withAndroidSigning',
+    './plugins/withDarkWindowBackground',
   ],
 
   extra: {

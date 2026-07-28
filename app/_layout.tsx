@@ -44,6 +44,7 @@ import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { onboardingFontAssets } from '@/constants/fonts';
+import { darkTheme } from '@/constants/theme';
 import { initDatabase, settingsRepo, fuelRepo } from '@/db';
 import { importLegacyData, ImportResult } from '@/db/legacy-import';
 import i18n, { isSupportedLanguage } from '@/i18n';
@@ -183,11 +184,12 @@ export default function RootLayout() {
 
   if (!canRender) {
     // Поверх лежит нативный splash; индикатор — запасной вариант там,
-    // где splash недоступен.
+    // где splash недоступен. Цвет фона тот же, что у splash и у окна,
+    // иначе на стыке мелькает кадр другого цвета.
     return (
-      <View style={{ flex: 1, backgroundColor: '#000000',
+      <View style={{ flex: 1, backgroundColor: darkTheme.onboarding.bgBase,
                      justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#3db5f5" />
+        <ActivityIndicator size="large" color={darkTheme.colors.accent} />
       </View>
     );
   }

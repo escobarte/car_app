@@ -9,6 +9,13 @@
 
 ---
 
+## 2026-07-28 (3)
+- Убрано мелькание белого фона при запуске. Splash теперь без картинки — ровная тёмная заливка #05050a (= onboarding.bgBase), оба режима (light/dark) одинаковые. Главная причина белого кадра была не в splash: у AppTheme не был задан android:windowBackground и брался белый из Theme.AppCompat.DayNight — этот кадр виден между скрытием splash и первым рендером React.
+- Новый config-плагин plugins/withDarkWindowBackground.js: задаёт windowBackground / statusBarColor / navigationBarColor у AppTheme, тёмный splashscreen_background в values и values-night, прозрачную иконку splash для Android 12+. Те же правки внесены напрямую в native-файлы, чтобы работало без prebuild.
+- Добавлен top-level backgroundColor в конфиг (фон рут-вью через expo-system-ui); загрузочный экран в _layout.tsx переведён на цвета темы вместо литералов.
+- файлы: app.config.js, app.json, plugins/withDarkWindowBackground.js (новый), android/app/src/main/res/values/styles.xml, android/app/src/main/res/values/colors.xml, android/app/src/main/res/values-night/colors.xml, app/_layout.tsx
+- статус: ждёт проверки на телефоне
+
 ## 2026-07-28 (2)
 - Onboarding: запрос разрешения на уведомления убран со старта приложения и перенесён в конец онбординга — на кнопку «Поехали», перед переходом на дашборд. Диалог всплывает поверх тёмного экрана 3, а не поверх splash. Спрашивается только при первом прохождении (флаг isFirstRun в BootstrapContext); переход выполняется независимо от ответа. При согласии расписание напоминаний пересобирается сразу.
 - Onboarding: отменён подъём футера над клавиатурой на экране 2 — KeyboardAvoidingView удалён, футер уходит под клавиатуру, кнопка больше не наезжает на поля. Футер сведён в один компонент с общим нижним отступом (safe-area inset + onboarding.sizes.footerPadBottom), SafeAreaView на слайдах ограничен edges top/left/right — нижний inset больше не учитывается дважды, кнопка стоит на одном уровне на всех трёх экранах.
