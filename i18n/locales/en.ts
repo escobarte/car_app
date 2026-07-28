@@ -103,7 +103,7 @@ const en: TranslationKeys = {
   service: {
     title:          'Service',
     doneBtn:        'Done',
-    addReminder:    '+ Add schedule',
+    addReminder:    'Add schedule',
     remainingKm:    '{{n}} km left',
     remainingDays:  '{{n}} days left',
     overdueKm:      '{{n}} km overdue',
@@ -118,7 +118,10 @@ const en: TranslationKeys = {
     // "Done" modal
     markDoneTitle:  'Mark as done',
     dateField:      'Date',
+    datePlaceholder:'Pick a date',
+    dateRequired:   'Pick the date it was done',
     odoField:       'Odometer',
+    odoRequired:    'Enter the odometer',
     costField:      'Cost (optional)',
     noteField:      'Note (optional)',
     confirmDone:    'Confirm',

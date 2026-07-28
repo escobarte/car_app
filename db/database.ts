@@ -71,6 +71,10 @@ export type Reminder = {
   type: 'mileage' | 'time';
   interval_km: number | null;
   interval_days: number | null;
+  /** Точка старта регламента (момент создания). Неизменна. */
+  start_odometer: number;
+  start_date: string;
+  /** Производные: последняя закрывшая запись SERVICE_RECORD, иначе start_*. */
   last_odometer: number;
   last_date: string;
   warn_before: number;
@@ -102,7 +106,12 @@ const BUILTIN_CATEGORIES: Omit<Category, 'id'>[] = [
 ];
 
 // Стартовые регламенты (раздел 7.2 ТЗ), привязываются к car_id = 1
-type ReminderSeed = Omit<Reminder, 'id' | 'car_id' | 'last_odometer' | 'last_date'>;
+// start_* / last_* в сидах не задаются: их проставляет SQL ниже,
+// отталкиваясь от текущего пробега машины и сегодняшней даты (ТЗ 6.3).
+type ReminderSeed = Omit<
+  Reminder,
+  'id' | 'car_id' | 'start_odometer' | 'start_date' | 'last_odometer' | 'last_date'
+>;
 const REMINDER_SEEDS: ReminderSeed[] = [
   { title: 'Замена масла', type: 'mileage', interval_km: 8000, interval_days: null, warn_before: 500  },
   { title: 'Гос. ТО',     type: 'time',    interval_km: null,  interval_days: 365,  warn_before: 25   },
@@ -127,7 +136,7 @@ export async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
  * Текущая версия схемы. Увеличивать при каждой новой миграции.
  * SCHEMA_VERSION === MIGRATIONS.length.
  */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /**
  * Шаги миграции: индекс 0 = переход v0→v1, индекс 1 = v1→v2, и т.д.
@@ -187,6 +196,30 @@ const MIGRATIONS: Array<(txn: Txn) => Promise<void>> = [
       // экране не меняется, и одометр не «просядет» после удаления записи.
       await txn.runAsync(
         `UPDATE car SET base_odometer = current_odometer WHERE id = 1;`
+      );
+    }
+  },
+
+  // ── v2 → v3 : точка старта регламента (ТЗ 6.3) ──────────────────────────
+  // Нужна для отката: при удалении записи SERVICE_RECORD, закрывавшей
+  // регламент, last_* возвращаются на предыдущую запись, а если её нет —
+  // на start_*. Без этих колонок откатывать было бы некуда.
+  async (txn) => {
+    const col = await txn.getFirstAsync<{ cid: number }>(
+      `SELECT cid FROM pragma_table_info('reminder') WHERE name='start_odometer';`
+    );
+    if (!col) {
+      await txn.execAsync(
+        `ALTER TABLE reminder ADD COLUMN start_odometer INTEGER NOT NULL DEFAULT 0;`
+      );
+      await txn.execAsync(
+        `ALTER TABLE reminder ADD COLUMN start_date TEXT NOT NULL DEFAULT '1970-01-01';`
+      );
+      // Настоящую точку старта задним числом не восстановить — она не
+      // хранилась. Берём текущие last_*: это лучшее доступное приближение,
+      // и статусы регламентов от миграции не меняются.
+      await txn.runAsync(
+        `UPDATE reminder SET start_odometer = last_odometer, start_date = last_date;`
       );
     }
   },
@@ -266,10 +299,13 @@ export async function initDatabase(deviceLanguage: 'ru' | 'en' = 'ru', isClean =
     for (const r of REMINDER_SEEDS) {
       await db.runAsync(
         `INSERT OR IGNORE INTO reminder
-           (car_id, title, type, interval_km, interval_days, last_odometer, last_date, warn_before)
+           (car_id, title, type, interval_km, interval_days,
+            start_odometer, start_date, last_odometer, last_date, warn_before)
          -- ТЗ 6.3: новый регламент стартует «в норме», с полным интервалом,
          -- поэтому отсчёт идёт от текущего пробега, а не от нуля.
-         SELECT 1, ?, ?, ?, ?, (SELECT current_odometer FROM car WHERE id = 1), date('now'), ?
+         SELECT 1, ?, ?, ?, ?,
+                (SELECT current_odometer FROM car WHERE id = 1), date('now'),
+                (SELECT current_odometer FROM car WHERE id = 1), date('now'), ?
          WHERE NOT EXISTS (SELECT 1 FROM reminder WHERE car_id = 1 AND title = ?);`,
         r.title, r.type, r.interval_km, r.interval_days, r.warn_before, r.title
       );

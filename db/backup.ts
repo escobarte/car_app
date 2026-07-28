@@ -198,11 +198,15 @@ export async function importDatabase(): Promise<ImportResult> {
       // Регламенты
       for (const r of backup.reminders) {
         await txn.runAsync(
+          // start_* в старых файлах бэкапа нет — подставляем last_*:
+          // на момент выгрузки это и было состоянием регламента.
           `INSERT INTO reminder
-             (id, car_id, title, type, interval_km, interval_days, last_odometer, last_date, warn_before)
-           VALUES (?,?,?,?,?,?,?,?,?);`,
+             (id, car_id, title, type, interval_km, interval_days,
+              start_odometer, start_date, last_odometer, last_date, warn_before)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?);`,
           r.id, r.car_id, r.title, r.type,
           r.interval_km ?? null, r.interval_days ?? null,
+          r.start_odometer ?? r.last_odometer, r.start_date ?? r.last_date,
           r.last_odometer, r.last_date, r.warn_before,
         );
       }

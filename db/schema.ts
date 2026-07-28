@@ -76,6 +76,14 @@ export const CREATE_TABLE_REMINDER = `
     type          TEXT    NOT NULL CHECK(type IN ('mileage', 'time')),
     interval_km   INTEGER,
     interval_days INTEGER,
+    -- Точка старта регламента (момент создания, ТЗ 6.3). Неизменна.
+    -- Нужна, чтобы откатить last_* при удалении единственной записи
+    -- об обслуживании: иначе возвращать было бы некуда.
+    start_odometer INTEGER NOT NULL DEFAULT 0,
+    start_date     TEXT   NOT NULL DEFAULT (date('now')),
+    -- Производные: последняя закрывшая регламент запись SERVICE_RECORD,
+    -- либо start_*, если таких записей нет.
+    -- Пересчитываются reminderRepo.syncReminderFromRecords().
     last_odometer INTEGER NOT NULL DEFAULT 0,
     last_date     TEXT    NOT NULL DEFAULT (date('now')),
     warn_before   INTEGER NOT NULL DEFAULT 0

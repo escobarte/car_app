@@ -40,26 +40,35 @@ export async function getReminderById(id: number): Promise<Reminder | null> {
  *
  * Значения можно передать явно — это нужно импорту бэкапа.
  */
-export async function addReminder(
-  reminder: Omit<Reminder, 'id' | 'last_odometer' | 'last_date'>
-          & Partial<Pick<Reminder, 'last_odometer' | 'last_date'>>
-): Promise<number> {
+type NewReminder =
+  Omit<Reminder, 'id' | 'start_odometer' | 'start_date' | 'last_odometer' | 'last_date'>
+  & Partial<Pick<Reminder, 'start_odometer' | 'start_date' | 'last_odometer' | 'last_date'>>;
+
+export async function addReminder(reminder: NewReminder): Promise<number> {
   const db = await openDatabase();
 
-  const last_odometer = reminder.last_odometer
+  const start_odometer = reminder.start_odometer
+    ?? reminder.last_odometer
     ?? (await getCar())?.current_odometer
     ?? 0;
-  const last_date = reminder.last_date ?? todayStr();
+  const start_date = reminder.start_date ?? reminder.last_date ?? todayStr();
+
+  // На старте last_* совпадают со start_*: работ по регламенту ещё не было.
+  const last_odometer = reminder.last_odometer ?? start_odometer;
+  const last_date     = reminder.last_date     ?? start_date;
 
   const result = await db.runAsync(
     `INSERT INTO reminder
-       (car_id, title, type, interval_km, interval_days, last_odometer, last_date, warn_before)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+       (car_id, title, type, interval_km, interval_days,
+        start_odometer, start_date, last_odometer, last_date, warn_before)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
     reminder.car_id,
     reminder.title,
     reminder.type,
     reminder.interval_km ?? null,
     reminder.interval_days ?? null,
+    start_odometer,
+    start_date,
     last_odometer,
     last_date,
     reminder.warn_before
@@ -68,22 +77,50 @@ export async function addReminder(
 }
 
 /**
- * Сбросить регламент после выполнения («Сделано»).
- * Обновляет last_odometer и last_date на текущие значения.
+ * Пересчитать last_odometer / last_date регламента из записей об
+ * обслуживании (ТЗ 6.3).
+ *
+ * Берётся последняя запись SERVICE_RECORD, закрывшая этот регламент.
+ * Если таких записей не осталось — откат на точку старта (start_*).
+ *
+ * Вызывается после добавления и удаления записи об обслуживании.
+ * Это делает last_* производными: удалили запись, закрывавшую регламент, —
+ * он честно возвращается в предыдущее состояние, а статус (он нигде не
+ * хранится и считается на лету в utils/reminders.ts) следует автоматически.
+ *
+ * Идемпотентна.
  */
-export async function resetReminder(
-  id: number,
-  currentOdometer: number,
-  currentDate: string   // 'YYYY-MM-DD'
-): Promise<void> {
+export async function syncReminderFromRecords(reminderId: number): Promise<void> {
   const db = await openDatabase();
-  await db.runAsync(
-    `UPDATE reminder
-     SET last_odometer = ?, last_date = ?
-     WHERE id = ?;`,
-    currentOdometer, currentDate, id
+
+  const last = await db.getFirstAsync<{ odometer: number; date: string }>(
+    `SELECT odometer, date FROM service_record
+      WHERE reminder_id = ?
+      ORDER BY date DESC, odometer DESC, id DESC
+      LIMIT 1;`,
+    reminderId
   );
+
+  if (last) {
+    await db.runAsync(
+      `UPDATE reminder SET last_odometer = ?, last_date = ? WHERE id = ?;`,
+      last.odometer, last.date, reminderId
+    );
+  } else {
+    await db.runAsync(
+      `UPDATE reminder
+          SET last_odometer = start_odometer, last_date = start_date
+        WHERE id = ?;`,
+      reminderId
+    );
+  }
 }
+
+// resetReminder удалён: last_* больше не выставляются вручную из формы
+// «Сделано». Они выводятся из записей об обслуживании — см.
+// syncReminderFromRecords(), которую дёргают add/deleteServiceRecord.
+// Прежний вариант затирал last_* введёнными значениями даже тогда, когда
+// добавлялась работа задним числом, и не откатывался при удалении записи.
 
 /** Обновить параметры регламента. */
 export async function updateReminder(

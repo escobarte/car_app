@@ -33,7 +33,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import { currencySymbol } from '@/constants/currencies';
-import { reminderRepo, serviceRepo, Reminder, Car } from '@/db';
+import { serviceRepo, Reminder, Car } from '@/db';
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
@@ -77,24 +77,30 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
   const visible = reminder !== null;
 
   // ── Состояние полей ──────────────────────────────────────────────────────
-  const [date,     setDate]     = useState(new Date());
-  const [datePick, setDatePick] = useState(false);
-  const [odo,      setOdo]      = useState('');
-  const [cost,     setCost]     = useState('');
-  const [note,     setNote]     = useState('');
-  const [saving,   setSaving]   = useState(false);
-  const [focused,  setFocused]  = useState<string | null>(null);
-  const [odoError, setOdoError] = useState('');
+  // Дата и пробег обязательны (ТЗ 6.3), поэтому оба стартуют пустыми:
+  // date === null означает «пользователь ещё не выбрал». Раньше поле
+  // молча подставляло сегодня, а пустой пробег — текущий пробег машины,
+  // и регламент закрывался значениями, которых пользователь не вводил.
+  const [date,      setDate]      = useState<Date | null>(null);
+  const [datePick,  setDatePick]  = useState(false);
+  const [odo,       setOdo]       = useState('');
+  const [cost,      setCost]      = useState('');
+  const [note,      setNote]      = useState('');
+  const [saving,    setSaving]    = useState(false);
+  const [focused,   setFocused]   = useState<string | null>(null);
+  const [odoError,  setOdoError]  = useState('');
+  const [dateError, setDateError] = useState('');
 
-  // Каждый раз при открытии — сбрасываем поля; текущий пробег виден как placeholder.
+  // Каждый раз при открытии — сбрасываем поля.
   useEffect(() => {
     if (visible) {
-      setDate(new Date());
+      setDate(null);
       setOdo('');
       setCost('');
       setNote('');
       setFocused(null);
       setOdoError('');
+      setDateError('');
     }
   }, [visible]);
 
@@ -102,36 +108,42 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
   async function handleSave() {
     if (!reminder || saving) return;
 
-    // Валидация пробега: если заполнен — не должен быть меньше текущего
-    const odoTrimmed = odo.trim();
-    if (odoTrimmed) {
-      const parsed = parseInt(odoTrimmed, 10);
-      if (isNaN(parsed) || parsed < (car?.current_odometer ?? 0)) {
-        setOdoError(t('common.errorOdometer'));
-        return;
-      }
+    // ── Валидация: дата и пробег обязательны (ТЗ 6.3) ──────────────────────
+    // Проверяем оба поля до выхода, чтобы пользователь увидел все ошибки
+    // сразу, а не по одной на каждое нажатие.
+    let ok = true;
+
+    if (!date) {
+      setDateError(t('service.dateRequired'));
+      ok = false;
     }
+
+    const odoTrimmed = odo.trim();
+    const parsedOdo  = parseInt(odoTrimmed, 10);
+    if (!odoTrimmed) {
+      setOdoError(t('service.odoRequired'));
+      ok = false;
+    } else if (isNaN(parsedOdo) || parsedOdo < (car?.current_odometer ?? 0)) {
+      setOdoError(t('common.errorOdometer'));
+      ok = false;
+    }
+
+    if (!ok || !date) return;
 
     setSaving(true);
     try {
-      const dateStr = toISO(date);
-      const odoNum  = odoTrimmed ? parseInt(odoTrimmed, 10) : (car?.current_odometer ?? 0);
       const costNum = cost.trim() ? parseNum(cost) : 0;
 
+      // last_odometer / last_date регламента пересчитает сам репозиторий
+      // из записей об обслуживании — см. syncReminderFromRecords().
       await serviceRepo.addServiceRecord({
         car_id:      1,
         reminder_id: reminder.id,
-        date:        dateStr,
-        odometer:    isNaN(odoNum)  ? 0 : odoNum,
+        date:        toISO(date),
+        odometer:    parsedOdo,
         cost:        isNaN(costNum) ? 0 : costNum,
         note:        note.trim(),
       });
-
-      await reminderRepo.resetReminder(
-        reminder.id,
-        isNaN(odoNum) ? 0 : odoNum,
-        dateStr,
-      );
 
       onSaved();
       onClose();
@@ -190,23 +202,26 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
             {/* Дата */}
             <Text style={s.fieldLabel}>{t('service.dateField')}</Text>
             <TouchableOpacity
-              style={inputStyle('date')}
-              onPress={() => setDatePick(true)}
+              style={[inputStyle('date'), dateError ? s.inputError : undefined]}
+              onPress={() => { setDatePick(true); if (dateError) setDateError(''); }}
               activeOpacity={0.8}
             >
               <View style={s.dateRow}>
-                <Text style={s.inputText}>{toDisplay(date, locale)}</Text>
+                <Text style={date ? s.inputText : s.inputPlaceholder}>
+                  {date ? toDisplay(date, locale) : t('service.datePlaceholder')}
+                </Text>
                 <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
               </View>
             </TouchableOpacity>
+            {!!dateError && <Text style={s.errorText}>{dateError}</Text>}
             {datePick && (
               <DateTimePicker
-                value={date}
+                value={date ?? new Date()}
                 mode="date"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 onChange={(_: DateTimePickerEvent, d?: Date) => {
                   if (Platform.OS === 'android') setDatePick(false);
-                  if (d) setDate(d);
+                  if (d) { setDate(d); setDateError(''); }
                 }}
                 maximumDate={new Date()}
               />
@@ -214,7 +229,14 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
             {Platform.OS === 'ios' && datePick && (
               <TouchableOpacity
                 style={s.iosDoneBtn}
-                onPress={() => setDatePick(false)}
+                onPress={() => {
+                  // iOS-спиннер не шлёт onChange, если колесо не крутили.
+                  // Тап по «Готово» — явное действие, поэтому фиксируем
+                  // показанное значение, иначе дата осталась бы пустой.
+                  setDate((prev) => prev ?? new Date());
+                  setDateError('');
+                  setDatePick(false);
+                }}
               >
                 <Text style={s.iosDoneBtnText}>{t('common.done')}</Text>
               </TouchableOpacity>
@@ -353,7 +375,8 @@ function makeStyles(th: AppTheme, bottomInset: number) {
       marginTop: 4,
       marginBottom: 4,
     },
-    inputText:       { color: colors.textPrimary, ...typography.cardText },
+    inputText:        { color: colors.textPrimary, ...typography.cardText },
+    inputPlaceholder: { color: colors.textWeak,    ...typography.cardText },
     dateRow: {
       flexDirection:  'row',
       alignItems:     'center',

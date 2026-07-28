@@ -120,7 +120,7 @@ const ru = {
   service: {
     title:          'Обслуживание',
     doneBtn:        'Сделано',
-    addReminder:    '+ Добавить регламент',
+    addReminder:    'Добавить регламент',
     remainingKm:    'Осталось {{n}} км',
     remainingDays:  'Осталось {{n}} дн.',
     overdueKm:      'Просрочено на {{n}} км',
@@ -135,7 +135,10 @@ const ru = {
     // Модальное окно «Сделано»
     markDoneTitle:  'Отметить выполнение',
     dateField:      'Дата',
+    datePlaceholder:'Выберите дату',
+    dateRequired:   'Укажите дату выполнения',
     odoField:       'Пробег',
+    odoRequired:    'Укажите пробег',
     costField:      'Стоимость (необязательно)',
     noteField:      'Заметка (необязательно)',
     confirmDone:    'Подтвердить',

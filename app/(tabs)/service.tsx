@@ -321,7 +321,7 @@ export default function ServiceScreen() {
           </View>
         )}
 
-        {/* ── «+ Добавить регламент» ─────────────────────────────────────── */}
+        {/* ── «Добавить регламент» (плюс — иконкой, не в тексте) ─────────── */}
         <TouchableOpacity
           style={s.addReminderBtn}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
