@@ -129,6 +129,9 @@ export default function DashboardScreen() {
   const [monthlyTotal, setMonthlyTotal] = useState<number>(0);
   const [avgPrice,     setAvgPrice]     = useState<number | null>(null);
   const [avgCons,      setAvgCons]      = useState<number | null>(null);
+  // Почему расход не посчитан (§6.2 требует два полных бака подряд).
+  // null — расход есть, подсказка не нужна.
+  const [consReason,   setConsReason]   = useState<'noFullTank' | 'needSecond' | null>(null);
   const [remRows,      setRemRows]      = useState<ReminderRow[]>([]);
   const [recent,       setRecent]       = useState<RecentItem[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -244,7 +247,18 @@ export default function DashboardScreen() {
     setCar(carData);
     setMonthlyTotal(total);
     setAvgPrice(avg(prices));
-    setAvgCons(avg(consumptions));
+
+    // Расход и причина его отсутствия. Формулу не трогаем (§6.2): consumption
+    // проставлен только у полных баков, у которых есть предыдущий полный.
+    // Нет ни одного полного бака → просим отметить полный бак; есть один
+    // (и сколько угодно неполных) → ждём второй. Неполные заправки сами по
+    // себе расход не дают никогда.
+    const avgConsValue  = avg(consumptions);
+    const fullTankCount = allFuel.filter((f) => f.is_full_tank === 1).length;
+    setAvgCons(avgConsValue);
+    setConsReason(
+      avgConsValue != null ? null : fullTankCount === 0 ? 'noFullTank' : 'needSecond',
+    );
     setRemRows(rows);
     setRecent(merged.slice(0, 5));
   }, []);
@@ -432,7 +446,15 @@ export default function DashboardScreen() {
           <Text style={s.statValue} numberOfLines={1}>
             {avgCons != null ? avgCons.toFixed(1) : '—'}
           </Text>
-          <Text style={s.statSub}>{t('dashboard.per100km')}</Text>
+          {consReason === null ? (
+            <Text style={s.statSub}>{t('dashboard.per100km')}</Text>
+          ) : (
+            <Text style={s.statHint}>
+              {consReason === 'noFullTank'
+                ? t('dashboard.consHintNoFullTank')
+                : t('dashboard.consHintNeedSecond')}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -731,6 +753,9 @@ function makeStyles(th: AppTheme, topInset: number) {
       marginBottom: 4,
     },
     statSub: { color: colors.textMuted, ...typography.labelSmall },
+    // Подсказка вместо единиц измерения, когда значение посчитать нельзя.
+    // Переносится на несколько строк — карточки в ряду тянутся по высоте.
+    statHint: { color: colors.textMuted, ...typography.labelSmall, lineHeight: 16 },
 
     // ── Секция напоминаний ─────────────────────────────────────────────────
     sectionHeader: {

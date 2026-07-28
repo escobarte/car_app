@@ -85,7 +85,10 @@ export default function AddFuelScreen() {
   const [odometer,    setOdometer]    = useState('');
   const [liters,      setLiters]      = useState('');
   const [totalCost,   setTotalCost]   = useState('');
-  const [isFullTank,  setIsFullTank]  = useState(false);
+  // Полный бак по умолчанию включён: это самый частый сценарий, и только
+  // такие заправки участвуют в расчёте расхода (§6.2, full-to-full).
+  // При редактировании значение перетирается из записи — см. load().
+  const [isFullTank,  setIsFullTank]  = useState(true);
   const [focused,     setFocused]     = useState<string | null>(null);
   const [errors,      setErrors]      = useState<Record<string, string>>({});
 

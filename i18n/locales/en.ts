@@ -63,6 +63,9 @@ const en: TranslationKeys = {
     avgConsumption:  'Avg. consumption',
     perLiter:        'per liter',
     per100km:        'L/100km',
+    // Hints under the “—” in the “Avg. consumption” card (§6.2: two full tanks needed)
+    consHintNoFullTank: 'mark “Full tank” to calculate',
+    consHintNeedSecond: 'one more full-tank fill-up needed',
     reminders:          'Reminders',
     noReminders:        'All schedules are on track',
     odometer:           'Odometer',
