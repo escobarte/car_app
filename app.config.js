@@ -37,6 +37,15 @@ module.exports = {
 
   plugins: [
     'expo-router',
+    // ВНИМАНИЕ, порядок неочевиден: моды выполняются в ОБРАТНОМ порядке
+    // регистрации (withMod вызывает свой action, а затем nextMod —
+    // ранее зарегистрированную цепочку). Значит плагин, стоящий в списке
+    // РАНЬШЕ, отрабатывает ПОЗЖЕ и перезаписывает результат.
+    // withDarkWindowBackground обязан идти до expo-splash-screen: тот
+    // целиком пересоздаёт стиль Theme.App.SplashScreen и безусловно
+    // прописывает @drawable/splashscreen_logo, которого без image в
+    // конфиге не существует → aapt падает на processReleaseResources.
+    './plugins/withDarkWindowBackground',
     [
       'expo-splash-screen',
       {
@@ -71,7 +80,6 @@ module.exports = {
       },
     ],
     './plugins/withAndroidSigning',
-    './plugins/withDarkWindowBackground',
   ],
 
   extra: {

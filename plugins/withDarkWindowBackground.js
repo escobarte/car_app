@@ -15,6 +15,16 @@
  *  3. windowSplashScreenAnimatedIcon → прозрачный, чтобы на Android 12+
  *     не показывалась иконка. Полностью отключить системный splash-icon
  *     на API 31+ нельзя, прозрачный drawable — штатный обходной путь.
+ *  4. Снимает ЛЮБУЮ ссылку на @drawable/splashscreen_logo. Это не
+ *     украшательство: expo-splash-screen пересоздаёт стиль
+ *     Theme.App.SplashScreen и прописывает эту ссылку безусловно, даже
+ *     когда image в конфиге нет и drawable не генерируется. Результат —
+ *     висячая ссылка и падение aapt на processReleaseResources.
+ *
+ * ПОРЯДОК В app.config.js: этот плагин должен стоять ДО expo-splash-screen.
+ * Моды выполняются в обратном порядке регистрации (withMod: сначала свой
+ * action, потом nextMod — ранее зарегистрированная цепочка), поэтому
+ * «раньше в списке» означает «отработает позже и перезапишет».
  *
  * Идемпотентен, применяется при каждом expo prebuild.
  *
@@ -31,9 +41,11 @@ const {
 // Совпадает с onboarding.bgBase из constants/theme.ts
 const DARK = '#05050a';
 
-const APP_THEME   = 'AppTheme';
+const APP_THEME    = 'AppTheme';
 const SPLASH_THEME = 'Theme.App.SplashScreen';
 const BG_COLOR_REF = '@color/splashscreen_background';
+const TRANSPARENT  = '@android:color/transparent';
+const DEAD_LOGO_REF = '@drawable/splashscreen_logo';
 
 // ─── Хелперы над разобранным XML ─────────────────────────────────────────────
 
@@ -44,6 +56,16 @@ function setStyleItem(styles, styleName, itemName, value) {
   const found = style.item.find((i) => i.$.name === itemName);
   if (found) found._ = value;
   else style.item.push({ _: value, $: { name: itemName } });
+}
+
+/** Заменяет ссылку на несуществующий splash-логотип во ВСЕХ стилях,
+ *  независимо от того, в каком атрибуте она оказалась. */
+function dropDeadLogoRefs(styles) {
+  for (const style of styles.resources.style ?? []) {
+    for (const item of style.item ?? []) {
+      if (item._ === DEAD_LOGO_REF) item._ = TRANSPARENT;
+    }
+  }
 }
 
 function setColor(colors, name, value) {
@@ -65,8 +87,11 @@ function applyStyles(config) {
     setStyleItem(styles, APP_THEME, 'android:navigationBarColor',  BG_COLOR_REF);
 
     // Android 12+: убрать иконку со splash
-    setStyleItem(styles, SPLASH_THEME, 'windowSplashScreenAnimatedIcon', '@android:color/transparent');
+    setStyleItem(styles, SPLASH_THEME, 'windowSplashScreenAnimatedIcon', TRANSPARENT);
     setStyleItem(styles, SPLASH_THEME, 'android:windowSplashScreenBehavior', 'default');
+
+    // Страховка: ни одной висячей ссылки на splashscreen_logo не остаётся
+    dropDeadLogoRefs(styles);
 
     return config;
   });

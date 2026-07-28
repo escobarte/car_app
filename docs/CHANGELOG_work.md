@@ -9,6 +9,12 @@
 
 ---
 
+## 2026-07-28 (4)
+- Починена сборка: aapt падал на processReleaseResources из-за висячей ссылки @drawable/splashscreen_logo. Причина — expo-splash-screen пересоздаёт стиль Theme.App.SplashScreen и прописывает эту ссылку безусловно, даже когда image в конфиге нет и drawable не генерируется (PNG были удалены prebuild'ом).
+- withDarkWindowBackground перемещён в app.config.js ДО expo-splash-screen: моды выполняются в обратном порядке регистрации, поэтому раньше плагин отрабатывал первым и его правки затирались. В плагин добавлена сплошная зачистка любых ссылок на splashscreen_logo. В styles.xml ссылка заменена на @android:color/transparent, windowSplashScreenBehavior — с icon_preferred на default. Висячих ссылок: 0 (в values и values-night).
+- файлы: app.config.js, plugins/withDarkWindowBackground.js, android/app/src/main/res/values/styles.xml
+- статус: ждёт проверки на телефоне
+
 ## 2026-07-28 (3)
 - Убрано мелькание белого фона при запуске. Splash теперь без картинки — ровная тёмная заливка #05050a (= onboarding.bgBase), оба режима (light/dark) одинаковые. Главная причина белого кадра была не в splash: у AppTheme не был задан android:windowBackground и брался белый из Theme.AppCompat.DayNight — этот кадр виден между скрытием splash и первым рендером React.
 - Новый config-плагин plugins/withDarkWindowBackground.js: задаёт windowBackground / statusBarColor / navigationBarColor у AppTheme, тёмный splashscreen_background в values и values-night, прозрачную иконку splash для Android 12+. Те же правки внесены напрямую в native-файлы, чтобы работало без prebuild.
