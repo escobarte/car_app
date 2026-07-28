@@ -122,6 +122,23 @@ export async function syncReminderFromRecords(reminderId: number): Promise<void>
 // Прежний вариант затирал last_* введёнными значениями даже тогда, когда
 // добавлялась работа задним числом, и не откатывался при удалении записи.
 
+/**
+ * Запомнить статус, о котором уже отправлено уведомление (только mileage).
+ * null — сброс: регламент вернулся в норму и о следующем ухудшении нужно
+ * уведомить заново. Пишет отдельным запросом, а не через updateReminder,
+ * чтобы служебное поле не смешивалось с пользовательскими правками формы.
+ */
+export async function setNotifiedStatus(
+  id: number,
+  status: 'soon' | 'due' | null
+): Promise<void> {
+  const db = await openDatabase();
+  await db.runAsync(
+    'UPDATE reminder SET notified_status = ? WHERE id = ?;',
+    [status, id]
+  );
+}
+
 /** Обновить параметры регламента. */
 export async function updateReminder(
   id: number,

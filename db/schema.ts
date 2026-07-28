@@ -86,7 +86,13 @@ export const CREATE_TABLE_REMINDER = `
     -- Пересчитываются reminderRepo.syncReminderFromRecords().
     last_odometer INTEGER NOT NULL DEFAULT 0,
     last_date     TEXT    NOT NULL DEFAULT (date('now')),
-    warn_before   INTEGER NOT NULL DEFAULT 0
+    warn_before   INTEGER NOT NULL DEFAULT 0,
+    -- Бухгалтерия уведомлений для type='mileage': статус, о котором уже
+    -- уведомили ('soon' | 'due' | NULL = ни о чём). Расчёт статусов (ТЗ 6.3)
+    -- от неё не зависит — она нужна только планировщику уведомлений, чтобы
+    -- немедленный push уходил один раз на переход, а не при каждом пересчёте
+    -- одометра. Для type='time' не используется (там CALENDAR-триггеры).
+    notified_status TEXT
   );
 `;
 

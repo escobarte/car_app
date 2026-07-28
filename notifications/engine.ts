@@ -26,6 +26,7 @@ import type { SchedulableTriggerInputTypes } from 'expo-notifications';
 import i18n from '@/i18n';
 import { carRepo, reminderRepo, settingsRepo } from '@/db';
 import { calcReminderRow, STATUS_ORDER } from '@/utils/reminders';
+import { darkTheme } from '@/constants/theme';
 
 // ─── 1. LogBox — подавляем предупреждения пакета ─────────────────────────────
 // Работает только в development (в production LogBox отключён — безопасно).
@@ -102,6 +103,27 @@ function at9AMOrLater(date: Date): Date {
   d.setHours(9, 0, 0, 0);
   return d.getTime() <= Date.now() ? next9AM() : d;
 }
+
+/**
+ * Текст просроченного регламента: «Просрочено на N км» / «Просрочено на N дн.»
+ *
+ * remaining приходит из calcReminderRow и при просрочке отрицателен. Ровно 0 —
+ * это «срок сегодня», а не «просрочено на 0»: для него берём отдельный текст.
+ */
+function overdueBody(
+  remaining: number,
+  unit: 'km' | 'days',
+  t: typeof i18n.t,
+): string {
+  if (remaining === 0) return t('notifications.due');
+  const n = Math.abs(remaining);
+  return unit === 'km'
+    ? t('notifications.overdueKm',   { n })
+    : t('notifications.overdueDays', { n });
+}
+
+/** Хвост очереди вызовов scheduleReminderNotifications (сериализация). */
+let _queue: Promise<void> = Promise.resolve();
 
 // ─── Публичный API ───────────────────────────────────────────────────────────
 
@@ -183,7 +205,9 @@ async function ensureAndroidChannel(): Promise<void> {
       description:      i18n.t('notifications.channelDesc'),
       importance:       N.AndroidImportance.DEFAULT,
       vibrationPattern: [0, 200, 100, 200],
-      lightColor:       '#3db5f5',
+      // Канал создаётся один раз на уровне ОС и живёт вне темы приложения,
+      // поэтому берём фиксированный акцент тёмной темы, а не текущей.
+      lightColor:       darkTheme.colors.accent,
     });
   } catch (e) {
     console.error('[notif] ensureAndroidChannel', e);
@@ -192,19 +216,42 @@ async function ensureAndroidChannel(): Promise<void> {
 
 /**
  * Планирует (или отменяет) локальные уведомления для регламентов.
- * Вызывать при каждом запуске приложения ПОСЛЕ initDatabase().
+ * Вызывать при каждом запуске приложения ПОСЛЕ initDatabase() и после
+ * любого изменения, влияющего на статусы (пробег, состав регламентов).
  *
- * Все уведомления приходят в 9:00 утра по часовому поясу телефона
- * (CALENDAR-триггер с hour:9, minute:0).
+ * Две разные модели доставки — по типу регламента:
  *
- * Стратегия (одно уведомление на регламент):
- *  time ok        → CALENDAR на warnDate @ 9:00 (разовый)
- *  time soon      → CALENDAR на dueDate  @ 9:00 (разовый)
- *  time due       → CALENDAR повтор каждый день в 9:00
- *  mileage ok     → не планируем
- *  mileage soon/due → CALENDAR повтор каждый день в 9:00
+ * type='time' — ВРЕМЯ. Срок наступает сам по календарю, приложение в этот
+ * момент может быть закрыто, поэтому уведомление планируется заранее на
+ * 9:00 по часовому поясу телефона (CALENDAR-триггер, ТЗ 6.3):
+ *   ok   → CALENDAR на warnDate @ 9:00 (разовый)
+ *   soon → CALENDAR на dueDate  @ 9:00 (разовый)
+ *   due  → CALENDAR повтор каждый день в 9:00
+ *
+ * type='mileage' — СОБЫТИЕ. Пробег сам по себе не растёт: статус меняется
+ * только когда пользователь добавил/поправил запись, то есть прямо сейчас
+ * и с приложением в руках. Ждать до 9:00 нечего — шлём немедленно
+ * (trigger: null) в момент перехода статуса, один раз на переход:
+ *   ok            → ничего не шлём, сбрасываем notified_status
+ *   ok→soon/due   → немедленный push
+ *   soon→due      → немедленный push
+ *   улучшение     → молча перезаряжаем notified_status
+ * Повтора по времени у mileage больше нет: «ежедневно в 9:00» тут было
+ * бессмысленно — до следующей записи пользователя цифра не меняется.
+ * Учёт отправленного — reminder.notified_status (см. схему).
+ *
+ * Вызовы сериализуются (см. _queue): раньше параллельный запуск был безобиден,
+ * теперь два наложившихся пересчёта успели бы прочитать один и тот же
+ * notified_status и прислать дубль немедленного push-а.
  */
-export async function scheduleReminderNotifications(): Promise<void> {
+export function scheduleReminderNotifications(): Promise<void> {
+  // Оба колбэка — runSchedule: следующий запуск идёт и после успеха,
+  // и после ошибки предыдущего, цепочка не обрывается.
+  _queue = _queue.then(runSchedule, runSchedule);
+  return _queue;
+}
+
+async function runSchedule(): Promise<void> {
   if (isExpoGo()) return;                    // guard ②
   try {
     const N = loadN();                       // lazy require ③
@@ -268,6 +315,35 @@ export async function scheduleReminderNotifications(): Promise<void> {
     for (const reminder of sorted) {
       const row = calcReminderRow(reminder, odo, today);
 
+      if (reminder.type === 'mileage') {
+        // Событийная модель: сравниваем текущий статус с тем, о котором уже
+        // уведомляли. STATUS_ORDER: due=0, soon=1, ok=2 — чем меньше, тем хуже.
+        const notified = reminder.notified_status ?? 'ok';
+
+        if (STATUS_ORDER[row.status] < STATUS_ORDER[notified]) {
+          // Стало хуже → шлём немедленно (trigger: null) и запоминаем статус.
+          const body = row.status === 'due'
+            ? overdueBody(row.remaining, 'km', t)
+            : t('notifications.soonKm', { n: row.remaining });
+          await N.scheduleNotificationAsync({
+            identifier: notifId(reminder.id),
+            content: { title: reminder.title, body, data: { reminderId: reminder.id } },
+            trigger: null,               // null = показать сразу
+          }).catch((e) => console.error(`[notif] present mileage ${notifId(reminder.id)}`, e));
+          await reminderRepo
+            .setNotifiedStatus(reminder.id, row.status as 'soon' | 'due')
+            .catch((e) => console.error(`[notif] setNotifiedStatus ${reminder.id}`, e));
+        } else if (row.status !== notified) {
+          // Стало лучше (в т.ч. после «Сделано» или удаления записи) —
+          // молча перезаряжаем, чтобы следующее ухудшение снова уведомило.
+          await reminderRepo
+            .setNotifiedStatus(reminder.id, row.status === 'ok' ? null : (row.status as 'soon'))
+            .catch((e) => console.error(`[notif] setNotifiedStatus ${reminder.id}`, e));
+        }
+        continue;
+      }
+
+      // ── time-based: планирование на 9:00 (ТЗ 6.3) ──────────────────────
       // Повторяющийся CALENDAR-триггер: каждый день в 9:00
       const dailyAt9: Parameters<typeof N.scheduleNotificationAsync>[0]['trigger'] = {
         type:    N.SchedulableTriggerInputTypes.CALENDAR as SchedulableTriggerInputTypes.CALENDAR,
@@ -277,21 +353,6 @@ export async function scheduleReminderNotifications(): Promise<void> {
         repeats: true,
       };
 
-      if (reminder.type === 'mileage') {
-        if (row.status === 'ok') continue;
-        const n    = Math.abs(row.remaining);
-        const body = row.status === 'due'
-          ? t('notifications.overdueKm', { n })
-          : t('notifications.soonKm',    { n: row.remaining });
-        await N.scheduleNotificationAsync({
-          identifier: notifId(reminder.id),
-          content: { title: reminder.title, body, data: { reminderId: reminder.id } },
-          trigger: dailyAt9,
-        }).catch((e) => console.error(`[notif] schedule mileage ${notifId(reminder.id)}`, e));
-        continue;
-      }
-
-      // time-based
       const interval = reminder.interval_days ?? 1;
       const lastDate = new Date(reminder.last_date + 'T00:00:00');
       const dueDate  = new Date(lastDate.getTime() + interval * 86_400_000);
@@ -333,12 +394,14 @@ export async function scheduleReminderNotifications(): Promise<void> {
           trigger: calendarAt(dueDate),
         }).catch((e) => console.error(`[notif] schedule time/soon ${notifId(reminder.id)}`, e));
       } else {
-        // due — уже просрочено, напоминаем каждый день в 9:00
+        // due — уже просрочено, напоминаем каждый день в 9:00.
+        // Число дней считается на момент планирования: до следующего запуска
+        // приложения (или пересчёта одометра) текст не обновится.
         await N.scheduleNotificationAsync({
           identifier: notifId(reminder.id),
           content: {
             title: reminder.title,
-            body:  t('notifications.overdue'),
+            body:  overdueBody(row.remaining, 'days', t),
             data:  { reminderId: reminder.id },
           },
           trigger: dailyAt9,

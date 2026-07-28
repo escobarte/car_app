@@ -78,6 +78,13 @@ export type Reminder = {
   last_odometer: number;
   last_date: string;
   warn_before: number;
+  /**
+   * Статус, о котором уже уведомили (только type='mileage').
+   * NULL — ни о чём; сбрасывается сам, когда регламент возвращается в норму.
+   * Опциональное поле: строки из SELECT * его содержат, но конструкторы
+   * регламентов (сиды, форма, импорт) его не задают.
+   */
+  notified_status?: 'soon' | 'due' | null;
 };
 
 export type AppSettings = {
@@ -136,7 +143,7 @@ export async function openDatabase(): Promise<SQLite.SQLiteDatabase> {
  * Текущая версия схемы. Увеличивать при каждой новой миграции.
  * SCHEMA_VERSION === MIGRATIONS.length.
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /**
  * Шаги миграции: индекс 0 = переход v0→v1, индекс 1 = v1→v2, и т.д.
@@ -221,6 +228,22 @@ const MIGRATIONS: Array<(txn: Txn) => Promise<void>> = [
       await txn.runAsync(
         `UPDATE reminder SET start_odometer = last_odometer, start_date = last_date;`
       );
+    }
+  },
+
+  // ── v3 → v4 : учёт отправленных уведомлений для type='mileage' ──────────
+  // Уведомления по пробегу шлются немедленно в момент перехода статуса
+  // (пробег меняется только при действии пользователя, ждать 9:00 незачем).
+  // Без этой колонки «немедленно» означало бы push при КАЖДОМ пересчёте
+  // одометра — то есть на каждую заправку, расход и правку записи.
+  // NULL для существующих строк = «ещё не уведомляли»: первый же пересчёт
+  // после обновления пришлёт актуальный статус просроченных регламентов.
+  async (txn) => {
+    const col = await txn.getFirstAsync<{ cid: number }>(
+      `SELECT cid FROM pragma_table_info('reminder') WHERE name='notified_status';`
+    );
+    if (!col) {
+      await txn.execAsync(`ALTER TABLE reminder ADD COLUMN notified_status TEXT;`);
     }
   },
 ];
