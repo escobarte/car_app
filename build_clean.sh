@@ -2,7 +2,7 @@
 set -e
 
 PROJECT_DIR="/mnt/a/car_app"
-OUT_DIR="/mnt/c/Users/Admin/OneDrive/car_apk/Ver_4_export_solving"
+OUT_DIR="/mnt/c/Users/Admin/OneDrive/car_apk/1latest_versions_apks"
 APK_SRC="android/app/build/outputs/apk/release/app-release.apk"
 
 cd "$PROJECT_DIR"
