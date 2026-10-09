@@ -28,6 +28,10 @@ module.exports = {
     },
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
+    // Дефолт Expo — true: Android Auto Backup сохраняет весь приватный каталог
+    // (включая SQLite-базу) и восстанавливает его при переустановке после
+    // удаления — старые данные и onboarding_completed=1 возвращаются сами.
+    allowBackup: false,
   },
 
   web: {
