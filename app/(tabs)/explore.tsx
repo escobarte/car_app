@@ -12,7 +12,7 @@
  * Никаких внешних chart-библиотек — только View + StyleSheet.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -44,6 +44,8 @@ const MONTHS_COUNT = 6;
 /** Высота области столбиков; верхние 22 px резервируются под подписи значений */
 const CHART_H      = 160;
 const BAR_MAX_H    = CHART_H - 22;
+/** Ширина одного столбика в режиме «за всё время» (горизонтальный скролл) */
+const BAR_COL_W    = 44;
 /** Прозрачность приглушённых (невыбранных) столбиков — цвет берётся из темы */
 const BAR_DIM_OPACITY = 0.2;
 
@@ -55,13 +57,17 @@ function ionName(icon: string): React.ComponentProps<typeof Ionicons>['name'] {
 
 // ─── Утилиты: время ──────────────────────────────────────────────────────────
 
-function recentMonths(): string[] {
+/** 'YYYY-MM' + delta месяцев (может быть отрицательным) → 'YYYY-MM'. */
+function shiftYM(ym: string, delta: number): string {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** count месяцев, заканчивающихся на anchorYM (включительно), по возрастанию. */
+function monthsWindow(anchorYM: string, count: number): string[] {
   const result: string[] = [];
-  const now = new Date();
-  for (let i = MONTHS_COUNT - 1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    result.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
+  for (let i = count - 1; i >= 0; i--) result.push(shiftYM(anchorYM, -i));
   return result;
 }
 
@@ -216,8 +222,7 @@ function buildCatStats(
 export default function StatsScreen() {
   const { t, i18n } = useTranslation();
   const locale   = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
-  const MONTHS   = useMemo(recentMonths, []);
-  const CURR_YM  = useMemo(currentYM,   []);
+  const CURR_YM  = useMemo(currentYM, []);
 
   const th = useAppTheme();
   const { colors, radius, typography, gradient } = th;
@@ -228,15 +233,16 @@ export default function StatsScreen() {
   const [activeTab,  setActiveTab]  = useState<TabKey>('fuel');
   // Выбранный столбик графика; по умолчанию — последний (текущий) месяц.
   const [selectedYM, setSelectedYM] = useState<string>(CURR_YM);
+  // Правый край видимого 6-месячного окна графика (вне режима «за всё время»).
+  const [windowEnd,  setWindowEnd]  = useState<string>(CURR_YM);
+  // Режим «за всё время»: суммы/категории/расход считаются по всем записям.
+  const [allTime,    setAllTime]    = useState(false);
   const [car,       setCar]       = useState<Car | null>(null);
-  const [fuelMap,   setFuelMap]   = useState<Record<string, number>>({});
-  const [expMap,    setExpMap]    = useState<Record<string, number>>({});
-  const [consMap,   setConsMap]   = useState<Record<string, number>>({});
-  const [maxOdoMap, setMaxOdoMap] = useState<Record<string, number>>({});
-  const [consStats, setConsStats] = useState<ConsStats | null>(null);
-  const [catStats,  setCatStats]  = useState<CatStat[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [allFuel,      setAllFuel]      = useState<FuelEntry[]>([]);
   const [allExpenses,  setAllExpenses]  = useState<Expense[]>([]);
+  // Все месяцы, где есть хоть одна запись (заправка или расход) — по возрастанию.
+  const [monthsWithData, setMonthsWithData] = useState<string[]>([]);
   const [loading,      setLoading]      = useState(true);
 
   // Выбранный сектор donut («Доля трат по месяцам»)
@@ -249,7 +255,18 @@ export default function StatsScreen() {
   // Модалка деталей метрики
   const [metricModal, setMetricModal] = useState<MetricModalData | null>(null);
 
-  // ── Загрузка ───────────────────────────────────────────────────────────────
+  // Самый ранний месяц с данными — граница для стрелки «назад». Нет данных
+  // вообще → earliestYM = null, «назад» дальше текущего месяца не пускаем.
+  const earliestYM = monthsWithData[0] ?? null;
+
+  // Месяцы, показанные на графике и участвующие в агрегации: либо скользящее
+  // окно из 6 месяцев вокруг selectedYM, либо (в allTime) все месяцы с данными.
+  const MONTHS = useMemo(() => {
+    if (allTime) return monthsWithData.length > 0 ? monthsWithData : [CURR_YM];
+    return monthsWindow(windowEnd, MONTHS_COUNT);
+  }, [allTime, monthsWithData, windowEnd, CURR_YM]);
+
+  // ── Загрузка (один раз на фокус экрана, не зависит от MONTHS) ───────────────
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -263,19 +280,51 @@ export default function StatsScreen() {
         ]);
         if (!active) return;
         setCar(carData);
-        setFuelMap(aggFuel(fuel, MONTHS));
-        setExpMap(aggExpenses(expenses, MONTHS));
-        setConsMap(aggConsumption(fuel, MONTHS));
-        setMaxOdoMap(aggMaxOdo(fuel, MONTHS));
-        setConsStats(buildConsStats(fuel, MONTHS));
-        setCatStats(buildCatStats(expenses, cats, MONTHS));
+        setCategories(cats);
         setAllFuel(fuel);
         setAllExpenses(expenses);
+        const monthSet = new Set<string>();
+        fuel.forEach(f => monthSet.add(f.date.slice(0, 7)));
+        expenses.forEach(e => monthSet.add(e.date.slice(0, 7)));
+        setMonthsWithData(Array.from(monthSet).sort());
         setLoading(false);
       })().catch(console.error);
       return () => { active = false; };
-    }, [MONTHS]),
+    }, []),
   );
+
+  // ── Агрегаты (пересчитываются при смене вкладки окна/режима, не при фетче) ──
+  const fuelMap   = useMemo(() => aggFuel(allFuel, MONTHS),        [allFuel, MONTHS]);
+  const expMap    = useMemo(() => aggExpenses(allExpenses, MONTHS), [allExpenses, MONTHS]);
+  const consMap   = useMemo(() => aggConsumption(allFuel, MONTHS), [allFuel, MONTHS]);
+  const maxOdoMap = useMemo(() => aggMaxOdo(allFuel, MONTHS),      [allFuel, MONTHS]);
+  const consStats = useMemo(() => buildConsStats(allFuel, MONTHS), [allFuel, MONTHS]);
+  const catStats  = useMemo(
+    () => buildCatStats(allExpenses, categories, MONTHS),
+    [allExpenses, categories, MONTHS],
+  );
+
+  // ── Навигация по месяцам (стрелки ‹ ›) ──────────────────────────────────────
+  const canGoForward = selectedYM < CURR_YM;
+  const canGoBack     = selectedYM > (earliestYM ?? CURR_YM);
+
+  function goMonth(delta: 1 | -1) {
+    const next = shiftYM(selectedYM, delta);
+    if (next > CURR_YM) return;
+    if (next < (earliestYM ?? CURR_YM)) return;
+    setSelectedYM(next);
+    // Окно сдвигаем минимально — только когда выбранный месяц выходит за край.
+    const windowStart = shiftYM(windowEnd, -(MONTHS_COUNT - 1));
+    if (next > windowEnd) setWindowEnd(next);
+    else if (next < windowStart) setWindowEnd(shiftYM(next, MONTHS_COUNT - 1));
+  }
+
+  // Горизонтальный скролл графика в режиме «за всё время» — прокручиваем
+  // к последнему месяцу при входе в режим или смене набора данных.
+  const chartScrollRef = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (allTime) chartScrollRef.current?.scrollToEnd({ animated: false });
+  }, [allTime, MONTHS.length]);
 
   // ── Записи выбранного месяца в donut (только «Топливо») ─────────────────────
   const donutMonthRecords = useMemo(() => {
@@ -473,31 +522,41 @@ export default function StatsScreen() {
   const currCode = car?.currency ?? '';
   const hasData = chartData.some(d => d.value > 0);
 
-  // Текст суммы/расхода за выбранный месяц.
+  // Сумма/расход за весь период — только для режима «за всё время».
+  // Для топлива/расходов это сумма всех месяцев; для расхода л/100 — не сумма
+  // помесячных средних (это было бы математически неверно), а consStats.avg,
+  // который уже посчитан по MONTHS = все месяцы с данными.
+  const periodTotal = useMemo(
+    () => chartData.reduce((sum, d) => sum + d.value, 0),
+    [chartData],
+  );
+
+  // Текст суммы/расхода — за выбранный месяц, либо (allTime) за весь период.
   function selectedText(): string {
     if (activeTab === 'consumption') {
-      return selectedValue > 0 ? `${selectedValue.toFixed(1)} ${t('stats.lPer100')}` : '—';
+      const v = allTime ? consStats.avg : selectedValue;
+      return v > 0 ? `${v.toFixed(1)} ${t('stats.lPer100')}` : '—';
     }
-    return formatMoney(selectedValue, currCode);
+    return formatMoney(allTime ? periodTotal : selectedValue, currCode);
   }
 
   // ── Тренд к предыдущему месяцу набора ───────────────────────────────────────
   // Меньше (трат / расхода) = хорошо (success), больше = плохо (danger) —
-  // правило едино для всех трёх вкладок. У первого месяца тренд прячем.
+  // правило едино для всех трёх вкладок. У первого месяца и в allTime тренд прячем.
   const selIdx    = MONTHS.indexOf(selectedYM);
   const prevYM    = selIdx > 0 ? MONTHS[selIdx - 1] : '';
   const prevValue = selIdx > 0 ? (chartData[selIdx - 1]?.value ?? 0) : 0;
-  const showTrend = selIdx > 0 && prevValue > 0 && selectedValue > 0 && selectedValue !== prevValue;
+  const showTrend = !allTime && selIdx > 0 && prevValue > 0 && selectedValue > 0 && selectedValue !== prevValue;
   const trendDown = selectedValue < prevValue;
   const trendPct  = showTrend ? Math.round((Math.abs(selectedValue - prevValue) / prevValue) * 100) : 0;
   const trendClr  = trendDown ? colors.statusOk : colors.statusDue;
 
-  // ── Пробег за выбранный месяц (только «Топливо») ────────────────────────────
+  // ── Пробег за выбранный месяц (только «Топливо», не в allTime) ─────────────
   // км = maxOdo(этот месяц) − maxOdo(предыдущий месяц набора). Прячем, если:
   // первый месяц набора; нет заправок с пробегом в этом/предыдущем месяце;
   // либо разница ≤ 0 (данные без роста пробега).
   const monthKm = ((): number | null => {
-    if (activeTab !== 'fuel' || selIdx <= 0) return null;
+    if (allTime || activeTab !== 'fuel' || selIdx <= 0) return null;
     const cur  = maxOdoMap[selectedYM];
     const prev = maxOdoMap[MONTHS[selIdx - 1]];
     if (cur === undefined || prev === undefined) return null;
@@ -561,9 +620,50 @@ export default function StatsScreen() {
         })}
       </View>
 
-      {/* ── Сумма выбранного месяца + тренд к предыдущему ───────────────────── */}
+      {/* ── Тумблер «За всё время» ───────────────────────────────────────────── */}
+      <TouchableOpacity
+        style={s.allTimeRow}
+        activeOpacity={0.7}
+        onPress={() => setAllTime(v => !v)}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: allTime }}
+        accessibilityLabel={t('stats.allTime')}
+      >
+        <View style={[s.allTimeBox, allTime && s.allTimeBoxActive]}>
+          {allTime && <Ionicons name="checkmark" size={11} color="#ffffff" />}
+        </View>
+        <Text style={s.allTimeText}>{t('stats.allTime')}</Text>
+      </TouchableOpacity>
+
+      {/* ── Сумма выбранного месяца (или всего периода) + тренд ─────────────── */}
       <View style={s.summaryRow}>
-        <Text style={s.summaryLabel}>{monthFull(selectedYM, locale)}</Text>
+        <View style={s.periodNavRow}>
+          {!allTime && (
+            <TouchableOpacity
+              style={[s.periodArrow, !canGoBack && s.periodArrowDisabled]}
+              onPress={() => goMonth(-1)}
+              disabled={!canGoBack}
+              accessibilityRole="button"
+              accessibilityLabel={t('stats.prevMonthA11y')}
+            >
+              <Ionicons name="chevron-back" size={16} color={canGoBack ? colors.textSecondary : colors.textWeak} />
+            </TouchableOpacity>
+          )}
+          <Text style={s.summaryLabel}>
+            {allTime ? t('stats.allTime') : monthFull(selectedYM, locale)}
+          </Text>
+          {!allTime && (
+            <TouchableOpacity
+              style={[s.periodArrow, !canGoForward && s.periodArrowDisabled]}
+              onPress={() => goMonth(1)}
+              disabled={!canGoForward}
+              accessibilityRole="button"
+              accessibilityLabel={t('stats.nextMonthA11y')}
+            >
+              <Ionicons name="chevron-forward" size={16} color={canGoForward ? colors.textSecondary : colors.textWeak} />
+            </TouchableOpacity>
+          )}
+        </View>
         <View style={s.summaryRight}>
           <Text style={s.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{selectedText()}</Text>
           {showTrend && (
@@ -593,79 +693,98 @@ export default function StatsScreen() {
             <Text style={s.noDataText}>{t('stats.noData')}</Text>
           </View>
         ) : (
-          <>
-            {/* Область столбиков */}
-            <View style={[s.barsArea, { height: CHART_H }]}>
-              {chartData.map(({ ym, value }) => {
-                const isSelected = ym === selectedYM;
-                // Выбранный пустой месяц показываем маленьким «нубом», чтобы
-                // подсветка была видна; невыбранный пустой месяц — без бара.
-                const barH = value > 0
-                  ? Math.max(Math.round((value / maxVal) * BAR_MAX_H), 4)
-                  : (isSelected ? 4 : 0);
+          (() => {
+            // В allTime месяцев может быть сколько угодно — столбики фиксированной
+            // ширины внутри горизонтального скролла. Иначе — ровно 6, flex-колонки.
+            const bars = chartData.map(({ ym, value }) => {
+              const isSelected = ym === selectedYM;
+              // Выбранный пустой месяц показываем маленьким «нубом», чтобы
+              // подсветка была видна; невыбранный пустой месяц — без бара.
+              const barH = value > 0
+                ? Math.max(Math.round((value / maxVal) * BAR_MAX_H), 4)
+                : (isSelected ? 4 : 0);
 
-                return (
-                  <TouchableOpacity
-                    key={ym}
-                    style={s.barWrapper}
-                    activeOpacity={0.8}
-                    onPress={() => setSelectedYM(ym)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${monthFull(ym, locale)}`}
-                  >
-                    {/* Подпись значения над столбиком */}
-                    {value > 0 && (
-                      <Text
-                        style={[
-                          s.barValueLabel,
-                          {
-                            bottom:  barH + 2,
-                            color:   isSelected ? colors.accent : colors.textWeak,
-                          },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {fmtShort(value)}
-                      </Text>
-                    )}
-                    {/* Столбик: выбранный — акцентный градиент, остальные приглушены */}
-                    {isSelected ? (
-                      <LinearGradient
-                        colors={gradient.accent.colors}
-                        start={gradient.accent.start}
-                        end={gradient.accent.end}
-                        style={[s.bar, { height: barH }]}
-                      />
-                    ) : (
-                      <View style={[s.bar, s.barDimmed, { height: barH }]} />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Подписи месяцев */}
-            <View style={s.labelsRow}>
-              {chartData.map(({ ym }) => (
+              return (
                 <TouchableOpacity
                   key={ym}
-                  style={s.labelCell}
+                  style={allTime ? [s.barWrapper, s.barWrapperFixed] : s.barWrapper}
                   activeOpacity={0.8}
                   onPress={() => setSelectedYM(ym)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${monthFull(ym, locale)}`}
                 >
-                  <Text
-                    style={[
-                      s.monthLabel,
-                      ym === selectedYM && { color: colors.accent },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {monthAbbr(ym, locale)}
-                  </Text>
+                  {/* Подпись значения над столбиком */}
+                  {value > 0 && (
+                    <Text
+                      style={[
+                        s.barValueLabel,
+                        {
+                          bottom:  barH + 2,
+                          color:   isSelected ? colors.accent : colors.textWeak,
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {fmtShort(value)}
+                    </Text>
+                  )}
+                  {/* Столбик: выбранный — акцентный градиент, остальные приглушены */}
+                  {isSelected ? (
+                    <LinearGradient
+                      colors={gradient.accent.colors}
+                      start={gradient.accent.start}
+                      end={gradient.accent.end}
+                      style={[s.bar, { height: barH }]}
+                    />
+                  ) : (
+                    <View style={[s.bar, s.barDimmed, { height: barH }]} />
+                  )}
                 </TouchableOpacity>
-              ))}
-            </View>
-          </>
+              );
+            });
+
+            const labels = chartData.map(({ ym }) => (
+              <TouchableOpacity
+                key={ym}
+                style={allTime ? [s.labelCell, s.labelCellFixed] : s.labelCell}
+                activeOpacity={0.8}
+                onPress={() => setSelectedYM(ym)}
+              >
+                <Text
+                  style={[
+                    s.monthLabel,
+                    ym === selectedYM && { color: colors.accent },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {monthAbbr(ym, locale)}
+                </Text>
+              </TouchableOpacity>
+            ));
+
+            if (!allTime) {
+              return (
+                <>
+                  <View style={[s.barsArea, { height: CHART_H }]}>{bars}</View>
+                  <View style={s.labelsRow}>{labels}</View>
+                </>
+              );
+            }
+
+            const contentWidth = chartData.length * BAR_COL_W;
+            return (
+              <ScrollView
+                ref={chartScrollRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+              >
+                <View>
+                  <View style={[s.barsArea, { height: CHART_H, width: contentWidth }]}>{bars}</View>
+                  <View style={[s.labelsRow, { width: contentWidth }]}>{labels}</View>
+                </View>
+              </ScrollView>
+            );
+          })()
         )}
       </View>
 
@@ -945,6 +1064,31 @@ function makeStyles(th: AppTheme, topInset: number) {
     pillText:       { color: colors.textSecondary, fontSize: 12, fontWeight: '400' as const },
     pillTextActive: { color: '#ffffff',            fontSize: 12, fontWeight: '500' as const },
 
+    // ── Тумблер «За всё время» ───────────────────────────────────────────────
+    allTimeRow: {
+      flexDirection:   'row',
+      alignItems:      'center',
+      alignSelf:       'flex-end',
+      gap:             6,
+      paddingVertical: 4,
+      marginBottom:    14,
+    },
+    allTimeBox: {
+      width:           16,
+      height:          16,
+      borderRadius:    4,
+      borderWidth:      1,
+      borderColor:      colors.border,
+      backgroundColor:  colors.surface,
+      alignItems:       'center',
+      justifyContent:   'center',
+    },
+    allTimeBoxActive: {
+      backgroundColor: colors.accent,
+      borderColor:     colors.accent,
+    },
+    allTimeText: { color: colors.textSecondary, ...typography.labelSmall },
+
     // ── Сумма + тренд ────────────────────────────────────────────────────────
     summaryRow: {
       flexDirection:  'row',
@@ -953,6 +1097,13 @@ function makeStyles(th: AppTheme, topInset: number) {
       marginBottom:   12,
       paddingHorizontal: 2,
     },
+    periodNavRow: {
+      flexDirection: 'row',
+      alignItems:    'center',
+      gap:           4,
+    },
+    periodArrow:         { padding: 4 },
+    periodArrowDisabled: { opacity: 0.35 },
     summaryLabel: {
       color:         colors.textSecondary,
       ...typography.labelSmall,
@@ -1033,6 +1184,9 @@ function makeStyles(th: AppTheme, topInset: number) {
       justifyContent: 'flex-end',
       // position: relative по умолчанию в RN — absolute-дочерние позиционируются внутри
     },
+    // Режим «за всё время»: фиксированная ширина вместо flex — колонки едут
+    // внутри горизонтального ScrollView, а не сжимаются под любое число месяцев.
+    barWrapperFixed: { flex: undefined, width: BAR_COL_W },
     barValueLabel: {
       position:  'absolute',
       fontSize:  9,
@@ -1061,6 +1215,7 @@ function makeStyles(th: AppTheme, topInset: number) {
       flex:       1,
       alignItems: 'center',
     },
+    labelCellFixed: { flex: undefined, width: BAR_COL_W },
     monthLabel: {
       color:    colors.textWeak,
       fontSize: 11,
