@@ -158,7 +158,7 @@ export default function DashboardScreen() {
 
   const loadData = useCallback(async () => {
     const ym = currentYearMonth();
-    const [carData, fuelMonth, expMonth, allSvc, allFuel, reminders, allExp, cats] =
+    const [carData, fuelMonth, expMonth, allSvc, allFuel, reminders, allExp, cats, segments] =
       await Promise.all([
         carRepo.getCar(),
         fuelRepo.getFuelEntriesByMonth(ym),
@@ -168,6 +168,7 @@ export default function DashboardScreen() {
         reminderRepo.getAllReminders(),
         expenseRepo.getAllExpenses(),
         categoryRepo.getAllCategories(),
+        fuelRepo.getFuelSegments(),
       ]);
 
     const svcMonth = allSvc.filter((sv) => sv.date.startsWith(ym));
@@ -179,10 +180,6 @@ export default function DashboardScreen() {
     const prices = fuelMonth
       .filter((f) => f.price_per_liter > 0)
       .map((f) => f.price_per_liter);
-
-    const consumptions = allFuel
-      .filter((f): f is FuelEntry & { consumption: number } => f.consumption != null)
-      .map((f) => f.consumption);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -232,14 +229,18 @@ export default function DashboardScreen() {
       ? Math.round(((curAvgP - prevAvgP) / prevAvgP) * 100) : null;
     setPriceDetail({ avg3m: avgP3m, min: minP3m, max: maxP3m, lastDate: allFuel[0]?.date ?? null, trend: priceTrend });
 
-    // Детали расхода топлива
+    // Детали расхода топлива. best/worst/last5 — по отдельным заправкам
+    // (это и есть смысл «лучшая/худшая заправка»), трend — средневзвешенно
+    // по сегментам (сумма литров / сумма км), чтобы короткая заправка-выброс
+    // не весила как длинная. Сегмент относится к месяцу по дате закрывающего
+    // его полного бака — так же, как сам consumption.
     const fullTanksAll = allFuel.filter((f) => f.is_full_tank === 1 && f.consumption != null);
     const last5 = fullTanksAll.slice(0, 5).map((f) => ({ date: f.date, cons: f.consumption! }));
     const allConsVals = fullTanksAll.map((f) => f.consumption!);
     const bestCons    = allConsVals.length > 0 ? Math.min(...allConsVals) : null;
     const worstCons   = allConsVals.length > 0 ? Math.max(...allConsVals) : null;
-    const prevAvgCons = avg(fullTanksAll.filter((f) => f.date.startsWith(prevYM)).map((f) => f.consumption!));
-    const curAvgCons  = avg(fullTanksAll.filter((f) => f.date.startsWith(ym)).map((f) => f.consumption!));
+    const prevAvgCons = fuelRepo.calcWeightedConsumption(segments.filter((s) => s.date.startsWith(prevYM)));
+    const curAvgCons  = fuelRepo.calcWeightedConsumption(segments.filter((s) => s.date.startsWith(ym)));
     const consTrend   = prevAvgCons != null && curAvgCons != null
       ? Math.round(((curAvgCons - prevAvgCons) / prevAvgCons) * 100) : null;
     setConsDetail({ last5, best: bestCons, worst: worstCons, trend: consTrend });
@@ -248,12 +249,13 @@ export default function DashboardScreen() {
     setMonthlyTotal(total);
     setAvgPrice(avg(prices));
 
-    // Расход и причина его отсутствия. Формулу не трогаем (§6.2): consumption
-    // проставлен только у полных баков, у которых есть предыдущий полный.
-    // Нет ни одного полного бака → просим отметить полный бак; есть один
-    // (и сколько угодно неполных) → ждём второй. Неполные заправки сами по
-    // себе расход не дают никогда.
-    const avgConsValue  = avg(consumptions);
+    // Средневзвешенный расход за всю историю (сумма литров сегментов ÷ сумма
+    // км сегментов × 100) — не простое среднее по заправкам: заправка на
+    // 600 км и заправка-выброс на 50 км раньше весили в среднем одинаково.
+    // Причина отсутствия числа не изменилась (§6.2): нет ни одного полного
+    // бака → просим отметить полный бак; есть один (и сколько угодно
+    // неполных) → ждём второй, сегментов пока не из чего составить.
+    const avgConsValue  = fuelRepo.calcWeightedConsumption(segments);
     const fullTankCount = allFuel.filter((f) => f.is_full_tank === 1).length;
     setAvgCons(avgConsValue);
     setConsReason(

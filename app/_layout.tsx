@@ -45,7 +45,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { onboardingFontAssets } from '@/constants/fonts';
 import { darkTheme } from '@/constants/theme';
-import { initDatabase, settingsRepo, fuelRepo, carRepo } from '@/db';
+import { initDatabase, settingsRepo, carRepo } from '@/db';
 import { importLegacyData, ImportResult } from '@/db/legacy-import';
 import i18n, { isSupportedLanguage } from '@/i18n';
 import { AppThemeProvider, useThemeCtx } from '@/contexts/theme-context';
@@ -164,10 +164,10 @@ export default function RootLayout() {
       }
 
       if (APP_VARIANT === 'data') {
+        // addFuelEntry() сам пересчитывает consumption после каждой вставки
+        // (db/repositories/fuel.ts) — отдельный вызов здесь больше не нужен.
         const result = await importLegacyData();
         setImportResult(result);
-        // Разовая идемпотентная миграция: пересчёт consumption по формуле §6.2
-        await fuelRepo.recalcAllFullTankConsumption();
       }
 
       // Разрешение на уведомления здесь НЕ запрашивается: системный диалог

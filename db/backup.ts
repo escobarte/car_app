@@ -13,6 +13,8 @@ import * as Sharing        from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { openDatabase, Car, FuelEntry, Expense, Category, ServiceRecord, Reminder, AppSettings } from './database';
+import { recalcCurrentOdometer } from './repositories/cars';
+import { recalcAllFullTankConsumption } from './repositories/fuel';
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -115,6 +117,41 @@ export async function exportDatabase(): Promise<string | null> {
 // ─── Импорт ──────────────────────────────────────────────────────────────────
 
 /**
+ * База для car.base_odometer при импорте (ТЗ 5.1: это нижняя граница, ниже
+ * которой recalcCurrentOdometer() не опустит пробег).
+ *
+ * Правило (по приоритету):
+ * 1. В файле есть car.base_odometer (бэкап сделан после миграции v1→v2,
+ *    когда это поле появилось в схеме) — берём его. Это именно то число,
+ *    что пользователь когда-то ввёл руками, самое достоверное значение.
+ * 2. Поля нет (старый формат бэкапа) — берём минимальный ПОЛОЖИТЕЛЬНЫЙ
+ *    odometer среди всех заливаемых записей (заправки/расходы/обслуживание).
+ *    Нельзя слепо взять current_odometer: тогда base_odometer окажется
+ *    выше всех исторических записей, а recalcCurrentOdometer() всё равно
+ *    вернёт MAX(base, записи) — но если потом самую раннюю запись удалят,
+ *    одометр не опустится ниже раздутого base_odometer, хотя реально
+ *    машина когда-то прошла меньше. Минимальный пробег среди записей —
+ *    самая ранняя точка, которая реально зафиксирована в истории.
+ * 3. Записей с пробегом нет вообще — единственное известное число это
+ *    current_odometer из файла.
+ */
+function resolveImportedBaseOdometer(backup: BackupData): number {
+  if (backup.car && typeof backup.car.base_odometer === 'number') {
+    return backup.car.base_odometer;
+  }
+
+  const odos = [
+    ...backup.fuelEntries.map((f) => f.odometer),
+    ...backup.expenses.map((e) => e.odometer).filter((o): o is number => o != null),
+    ...backup.serviceRecords.map((s) => s.odometer),
+  ].filter((o) => o > 0);
+
+  if (odos.length > 0) return Math.min(...odos);
+
+  return backup.car?.current_odometer ?? 0;
+}
+
+/**
  * Открывает file picker, читает JSON, валидирует структуру и заливает данные в БД.
  * Возвращает ImportResult.
  * При ошибке внутри транзакции withExclusiveTransactionAsync автоматически откатывает изменения.
@@ -168,12 +205,14 @@ export async function importDatabase(): Promise<ImportResult> {
 
       // Обновляем машину и настройки (они уже существуют с id=1)
       if (backup.car) {
-        // base_odometer в файле бэкапа нет (формат не менялся). Берём
-        // current_odometer из бэкапа: на момент выгрузки это и был
-        // достоверный пробег машины. Ниже него пересчёт не опустится.
+        const base_odometer = resolveImportedBaseOdometer(backup);
+        // current_odometer выставляем начальным значением из файла — сразу
+        // после транзакции recalcCurrentOdometer() пересчитает его как
+        // MAX(base_odometer, все odometer из только что залитых записей),
+        // поэтому неточность здесь не критична.
         await txn.runAsync(
           `UPDATE car SET name=?, base_odometer=?, current_odometer=?, fuel_unit=?, currency=? WHERE id=1;`,
-          backup.car.name, backup.car.current_odometer, backup.car.current_odometer,
+          backup.car.name, base_odometer, backup.car.current_odometer,
           backup.car.fuel_unit, backup.car.currency,
         );
       }
@@ -262,6 +301,18 @@ export async function importDatabase(): Promise<ImportResult> {
   } catch (e) {
     return { ok: false, code: 'restore_failed', detail: String(e) };
   }
+
+  // 4. Пересчёт одометра и расхода — ВНЕ транзакции (оба читают только что
+  // закоммиченные данные через обычный openDatabase(), а не txn). До этой
+  // правки импорт не трогал ни то, ни другое: car.current_odometer/
+  // base_odometer брались из файла как есть, а fuel_entry.price_per_liter/
+  // consumption заливались без проверки, что они согласуются с остальными
+  // залитыми записями (например, после правки файла руками).
+  // price_per_liter НЕ пересчитывается намеренно (из файла как есть) —
+  // только consumption, у которого есть собственная формула и чёткие
+  // условия пустоты (см. calcConsumption/recalcAllFullTankConsumption).
+  await recalcCurrentOdometer();
+  await recalcAllFullTankConsumption();
 
   return {
     ok: true,

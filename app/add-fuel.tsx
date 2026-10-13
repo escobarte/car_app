@@ -34,8 +34,9 @@ import { formatMoney } from '@/constants/currencies';
 import { carRepo } from '@/db';
 import {
   addFuelEntry,
-  getLastFullTankEntry,
-  getPartialLitersSince,
+  getPrevFullTank,
+  sumPartialLitersBetween,
+  calcConsumption,
   getFuelEntryById,
   updateFuelEntry,
 } from '@/db/repositories/fuel';
@@ -95,26 +96,23 @@ export default function AddFuelScreen() {
   // ── Данные из БД ──────────────────────────────────────────────────────────
   const [currency,        setCurrency]        = useState('MDL');
   const [currentOdometer, setCurrentOdometer] = useState(0);
-  const [lastFullOdo,     setLastFullOdo]     = useState<number | null>(null);
-  // Литры неполных заправок, накопленные после последнего полного бака (§6.2).
-  const [partialLiters,   setPartialLiters]   = useState(0);
+  // Предыдущий полный бак и накопленные литры неполных заправок между ним и
+  // ТЕКУЩИМ введённым пробегом (§6.2) — пересчитываются при каждой правке
+  // пробега, не только один раз на старте. Это важно при редактировании
+  // старой записи: предыдущий полный бак — не глобально последний, а тот,
+  // что идёт непосредственно перед ВВЕДЁННЫМ пробегом (getPrevFullTank
+  // в db/repositories/fuel.ts).
+  const [prevFullOdo,   setPrevFullOdo]   = useState<number | null>(null);
+  const [partialLiters, setPartialLiters] = useState(0);
   const [saving,          setSaving]          = useState(false);
   const [loadingEdit,     setLoadingEdit]     = useState(isEdit);
 
   useEffect(() => {
     async function load() {
-      const [car, lastFull] = await Promise.all([
-        carRepo.getCar(),
-        getLastFullTankEntry(),
-      ]);
+      const car = await carRepo.getCar();
       if (car) {
         setCurrency(car.currency);
         setCurrentOdometer(car.current_odometer);
-      }
-      if (lastFull) {
-        setLastFullOdo(lastFull.odometer);
-        // Копим литры неполных заправок после последнего полного бака.
-        setPartialLiters(await getPartialLitersSince(1, lastFull.odometer));
       }
 
       // Загрузка существующей записи для редактирования
@@ -147,18 +145,40 @@ export default function AddFuelScreen() {
   const pricePerLiter: number | null =
     okLiters && okCost ? costNum / litersNum : null;
 
-  /** Расход — только полный бак, нужен предыдущий одометр (6.2) */
+  // Предыдущий полный бак относительно ВВЕДЁННОГО пробега — пересчитывается
+  // при каждом изменении odometer, а не только при открытии формы.
+  useEffect(() => {
+    if (!okOdo) { setPrevFullOdo(null); setPartialLiters(0); return; }
+    let active = true;
+    (async () => {
+      const prev = await getPrevFullTank(1, odoNum, isEdit && editId ? Number(editId) : undefined);
+      if (!active) return;
+      if (prev) {
+        setPrevFullOdo(prev.odometer);
+        setPartialLiters(await sumPartialLitersBetween(1, prev.odometer, odoNum));
+      } else {
+        setPrevFullOdo(null);
+        setPartialLiters(0);
+      }
+    })().catch(console.error);
+    return () => { active = false; };
+  }, [odoNum, okOdo, isEdit, editId]);
+
+  /** Расход — только полный бак, нужен предыдущий полный (6.2) */
   const canCalcConsumption =
     isFullTank &&
-    lastFullOdo !== null &&
+    prevFullOdo !== null &&
     okOdo &&
-    odoNum > lastFullOdo &&
+    odoNum > prevFullOdo &&
     okLiters;
 
-  // §6.2: числитель = литры этого полного бака + накопленные литры неполных.
-  const previewConsumption: string | null = canCalcConsumption
-    ? (((litersNum + partialLiters) / (odoNum - lastFullOdo!)) * 100).toFixed(2)
+  // §6.2, полная формула — та же функция, что использует бэкенд при сохранении
+  // (db/repositories/fuel.ts: calcConsumption), чтобы превью не могло разойтись
+  // с тем, что реально будет сохранено.
+  const previewValue: number | null = canCalcConsumption
+    ? calcConsumption(litersNum, partialLiters, odoNum - prevFullOdo!)
     : null;
+  const previewConsumption: string | null = previewValue != null ? previewValue.toFixed(2) : null;
 
   // ── Валидация ─────────────────────────────────────────────────────────────
   function validate(): boolean {
@@ -361,7 +381,7 @@ export default function AddFuelScreen() {
             <Text style={s.previewLabel}>{t('addFuel.consumption')}</Text>
             {!isFullTank ? (
               <Text style={s.previewSkip}>{t('addFuel.notFullTankSkip')}</Text>
-            ) : lastFullOdo === null ? (
+            ) : prevFullOdo === null ? (
               <Text style={s.previewDim}>{t('addFuel.firstFullTank')}</Text>
             ) : (
               <Text style={[s.previewValue, !previewConsumption && s.previewDim]}>

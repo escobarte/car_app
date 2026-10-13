@@ -157,23 +157,27 @@ function aggMaxOdo(fuel: FuelEntry[], months: string[]): Record<string, number> 
   return r;
 }
 
-function aggConsumption(fuel: FuelEntry[], months: string[]): Record<string, number> {
+// Средневзвешенный расход за месяц: сумма литров сегментов этого месяца ÷
+// сумма их км × 100 (fuelRepo.calcWeightedConsumption) — не простое среднее
+// по заправкам, короткий сегмент-выброс не весит столько же, сколько длинный.
+// Сегмент относится к месяцу по дате закрывающего его полного бака (как и
+// сам consumption).
+function aggConsumption(segments: fuelRepo.FuelSegment[], months: string[]): Record<string, number> {
   const r = Object.fromEntries(months.map(m => [m, 0]));
   for (const ym of months) {
-    const full = fuel.filter(
-      f => f.date.startsWith(ym) && f.is_full_tank === 1 && f.consumption != null,
-    );
-    if (full.length > 0) {
-      r[ym] = full.reduce((s, f) => s + (f.consumption ?? 0), 0) / full.length;
-    }
+    const monthSegments = segments.filter(s => s.date.startsWith(ym));
+    const w = fuelRepo.calcWeightedConsumption(monthSegments);
+    if (w != null) r[ym] = w;
   }
   return r;
 }
 
 // Метрики расхода за период (вкладка «Расход л/100»). л/100 — только полные баки (ТЗ 6.2).
+// avg — средневзвешенный по сегментам периода; min/max — по отдельным
+// заправкам периода (это и есть смысл «лучшая/худшая заправка»), не трогаем.
 type ConsStats = { avg: number; distance: number; min: number; max: number };
 
-function buildConsStats(fuel: FuelEntry[], months: string[]): ConsStats {
+function buildConsStats(fuel: FuelEntry[], segments: fuelRepo.FuelSegment[], months: string[]): ConsStats {
   const periodFuel = fuel.filter(f => months.includes(f.date.slice(0, 7)));
   const cons = periodFuel
     .filter(f => f.is_full_tank === 1 && f.consumption != null)
@@ -183,8 +187,10 @@ function buildConsStats(fuel: FuelEntry[], months: string[]): ConsStats {
   const distance = odos.length >= 2 ? Math.max(...odos) - Math.min(...odos) : 0;
 
   if (cons.length === 0) return { avg: 0, distance, min: 0, max: 0 };
+
+  const periodSegments = segments.filter(s => months.includes(s.date.slice(0, 7)));
   return {
-    avg:      cons.reduce((s, v) => s + v, 0) / cons.length,
+    avg:      fuelRepo.calcWeightedConsumption(periodSegments) ?? 0,
     distance,
     min:      Math.min(...cons),
     max:      Math.max(...cons),
@@ -240,6 +246,7 @@ export default function StatsScreen() {
   const [car,       setCar]       = useState<Car | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allFuel,      setAllFuel]      = useState<FuelEntry[]>([]);
+  const [allSegments,  setAllSegments]  = useState<fuelRepo.FuelSegment[]>([]);
   const [allExpenses,  setAllExpenses]  = useState<Expense[]>([]);
   // Все месяцы, где есть хоть одна запись (заправка или расход) — по возрастанию.
   const [monthsWithData, setMonthsWithData] = useState<string[]>([]);
@@ -272,16 +279,18 @@ export default function StatsScreen() {
       let active = true;
       (async () => {
         setLoading(true);
-        const [carData, fuel, expenses, cats] = await Promise.all([
+        const [carData, fuel, expenses, cats, segments] = await Promise.all([
           carRepo.getCar(),
           fuelRepo.getAllFuelEntries(),
           expenseRepo.getAllExpenses(),
           categoryRepo.getAllCategories(),
+          fuelRepo.getFuelSegments(),
         ]);
         if (!active) return;
         setCar(carData);
         setCategories(cats);
         setAllFuel(fuel);
+        setAllSegments(segments);
         setAllExpenses(expenses);
         const monthSet = new Set<string>();
         fuel.forEach(f => monthSet.add(f.date.slice(0, 7)));
@@ -296,9 +305,12 @@ export default function StatsScreen() {
   // ── Агрегаты (пересчитываются при смене вкладки окна/режима, не при фетче) ──
   const fuelMap   = useMemo(() => aggFuel(allFuel, MONTHS),        [allFuel, MONTHS]);
   const expMap    = useMemo(() => aggExpenses(allExpenses, MONTHS), [allExpenses, MONTHS]);
-  const consMap   = useMemo(() => aggConsumption(allFuel, MONTHS), [allFuel, MONTHS]);
+  const consMap   = useMemo(() => aggConsumption(allSegments, MONTHS), [allSegments, MONTHS]);
   const maxOdoMap = useMemo(() => aggMaxOdo(allFuel, MONTHS),      [allFuel, MONTHS]);
-  const consStats = useMemo(() => buildConsStats(allFuel, MONTHS), [allFuel, MONTHS]);
+  const consStats = useMemo(
+    () => buildConsStats(allFuel, allSegments, MONTHS),
+    [allFuel, allSegments, MONTHS],
+  );
   const catStats  = useMemo(
     () => buildCatStats(allExpenses, categories, MONTHS),
     [allExpenses, categories, MONTHS],
