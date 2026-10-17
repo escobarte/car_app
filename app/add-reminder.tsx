@@ -24,17 +24,35 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
-import { reminderRepo, carRepo, settingsRepo } from '@/db';
+import { reminderRepo, carRepo, settingsRepo, Car } from '@/db';
 import { scheduleReminderNotifications } from '@/notifications/engine';
 import DashStatModal, { StatRow } from '@/components/DashStatModal';
 
 type ReminderType = 'mileage' | 'time';
 
+// ─── Утилиты ────────────────────────────────────────────────────────────────
+
+/** new Date() → 'YYYY-MM-DD' */
+function toISO(d: Date): string {
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function toDisplay(d: Date, locale: string): string {
+  return d.toLocaleDateString(locale, {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
+}
+
 export default function AddReminderScreen() {
   const { t, i18n } = useTranslation();
+  const locale = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
 
   const th = useAppTheme();
   const { colors, radius, typography, gradient } = th;
@@ -51,17 +69,36 @@ export default function AddReminderScreen() {
   const [interval,   setInterval]   = useState('');
   const [warnBefore, setWarnBefore] = useState('');
 
+  // «Когда сделано в последний раз» — start_date/start_odometer (ТЗ 5.6).
+  // По умолчанию — сегодня/текущий пробег (совпадает со старым поведением,
+  // если пользователь поля не трогает), но можно указать прошлую точку —
+  // например, замену масла, сделанную до того, как завели регламент.
+  const [lastDoneDate, setLastDoneDate] = useState(new Date());
+  const [datePick,     setDatePick]     = useState(false);
+  const [lastOdo,      setLastOdo]      = useState('');
+
   // ── UI-состояние ─────────────────────────────────────────────────────────
+  const [car,         setCar]         = useState<Car | null>(null);
   const [focused,     setFocused]     = useState<string | null>(null);
   const [errors,      setErrors]      = useState<{
     name?: string;
     interval?: string;
     warn?: string;
+    lastOdo?: string;
   }>({});
   const [saving,      setSaving]      = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(isEdit);
   const [confirmRows, setConfirmRows] = useState<StatRow[]>([]);
   const [confirmTitle, setConfirmTitle] = useState('');
+
+  // ── Загрузка машины (для дефолта/проверки «пробег при последней замене») ──
+  useEffect(() => {
+    carRepo.getCar().then((c) => {
+      setCar(c);
+      if (!isEdit) setLastOdo(String(c?.current_odometer ?? 0));
+    }).catch((e) => console.error('[AddReminder] load car', e));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Загрузка данных при редактировании ────────────────────────────────────
   useEffect(() => {
@@ -72,6 +109,13 @@ export default function AddReminderScreen() {
       setType(r.type as ReminderType);
       setInterval(String(r.type === 'mileage' ? (r.interval_km ?? '') : (r.interval_days ?? '')));
       setWarnBefore(String(r.warn_before));
+      // Показываем ТЕКУЩЕЕ «последний раз сделано» (last_*, а не «застывшее»
+      // start_*): если по регламенту уже есть реальные записи обслуживания,
+      // last_* отражает именно их. Сохраняется это всё равно в start_* —
+      // syncReminderFromRecords() сам решит, учитывать правку или нет
+      // (см. комментарий в db/repositories/reminders.ts).
+      setLastDoneDate(new Date(r.last_date + 'T00:00:00'));
+      setLastOdo(String(r.last_odometer));
       setLoadingEdit(false);
     }).catch(e => {
       console.error('[AddReminder] load edit', e);
@@ -95,6 +139,16 @@ export default function AddReminderScreen() {
     if (isNaN(wb) || wb < 0) {
       errs.warn = t('addReminder.errorWarn');
     }
+    // «Пробег при последней замене» — допустим ниже текущего (замена была
+    // в прошлом), но не выше: нельзя заменить масло на пробеге больше,
+    // чем машина успела проехать к сегодняшнему дню.
+    if (type === 'mileage') {
+      const lo = parseInt(lastOdo.trim(), 10);
+      const currentOdo = car?.current_odometer ?? 0;
+      if (!lastOdo.trim() || isNaN(lo) || lo < 0 || lo > currentOdo) {
+        errs.lastOdo = t('addReminder.errorLastOdo');
+      }
+    }
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -108,6 +162,14 @@ export default function AddReminderScreen() {
       const iv = parseInt(interval.trim(), 10);
       const wb = parseInt(warnBefore.trim(), 10);
 
+      // start_date — всегда «когда сделано в последний раз» (для time это
+      // и есть точка отсчёта интервала; для mileage используется только
+      // вместе с start_odometer). start_odometer передаём только для
+      // mileage — для time он не участвует в расчёте (utils/reminders.ts),
+      // трогать его смысла нет.
+      const start_date     = toISO(lastDoneDate);
+      const start_odometer = type === 'mileage' ? parseInt(lastOdo.trim(), 10) : undefined;
+
       if (isEdit) {
         await reminderRepo.updateReminder(editId!, {
           title:         name.trim(),
@@ -115,11 +177,14 @@ export default function AddReminderScreen() {
           interval_km:   type === 'mileage' ? iv   : null,
           interval_days: type === 'time'    ? iv   : null,
           warn_before:   wb,
+          start_date,
+          ...(start_odometer !== undefined ? { start_odometer } : {}),
         });
       } else {
-        // last_odometer / last_date не передаём: репозиторий сам ставит
-        // текущий пробег и сегодняшнюю дату, чтобы новый регламент
-        // стартовал «в норме» с полным интервалом (ТЗ 6.3).
+        // start_date/start_odometer переданы с формы — регламент может
+        // стартовать не «в норме», а сразу «скоро»/«пора», если пользователь
+        // указал прошлую дату/пробег последней замены. Если поля не трогали,
+        // они равны сегодня/текущему пробегу — поведение как раньше (ТЗ 6.3).
         await reminderRepo.addReminder({
           car_id:        1,
           title:         name.trim(),
@@ -127,6 +192,8 @@ export default function AddReminderScreen() {
           interval_km:   type === 'mileage' ? iv   : null,
           interval_days: type === 'time'    ? iv   : null,
           warn_before:   wb,
+          start_date,
+          ...(start_odometer !== undefined ? { start_odometer } : {}),
         });
       }
 
@@ -139,13 +206,12 @@ export default function AddReminderScreen() {
         .catch((e) => console.error('[notif] reschedule after reminder save', e));
 
       // ── Модалка-подтверждение ────────────────────────────────────────────
-      const [car, settings] = await Promise.all([
+      const [freshCar, settings] = await Promise.all([
         carRepo.getCar().catch(() => null),
         settingsRepo.getSettings().catch(() => null),
       ]);
-      const notifOn   = settings?.notifications_enabled === 1;
-      const locale    = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
-      const currentOdo = car?.current_odometer ?? 0;
+      const notifOn    = settings?.notifications_enabled === 1;
+      const currentOdo = freshCar?.current_odometer ?? 0;
 
       const rows: StatRow[] = [];
 
@@ -296,6 +362,70 @@ export default function AddReminderScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* ── Когда сделано в последний раз (start_date/start_odometer) ──── */}
+        {type === 'time' ? (
+          <>
+            <Text style={s.fieldLabel}>{t('addReminder.lastDoneTime')}</Text>
+            <TouchableOpacity
+              style={[inputStyle('lastDate'), s.dateRow]}
+              onPress={() => { setFocused('lastDate'); setDatePick(true); }}
+              activeOpacity={0.8}
+            >
+              <Text style={s.inputText}>{toDisplay(lastDoneDate, locale)}</Text>
+              <Text style={s.dateIcon}>📅</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={s.fieldLabel}>{t('addReminder.lastDoneMileageDate')}</Text>
+            <TouchableOpacity
+              style={[inputStyle('lastDate'), s.dateRow]}
+              onPress={() => { setFocused('lastDate'); setDatePick(true); }}
+              activeOpacity={0.8}
+            >
+              <Text style={s.inputText}>{toDisplay(lastDoneDate, locale)}</Text>
+              <Text style={s.dateIcon}>📅</Text>
+            </TouchableOpacity>
+
+            <Text style={s.fieldLabel}>{t('addReminder.lastDoneMileageOdo')}</Text>
+            <TextInput
+              style={inputStyle('lastOdo', !!errors.lastOdo)}
+              value={lastOdo}
+              onChangeText={(v) => {
+                setLastOdo(v);
+                if (errors.lastOdo) setErrors((p) => ({ ...p, lastOdo: undefined }));
+              }}
+              onFocus={() => setFocused('lastOdo')}
+              onBlur={()  => setFocused(null)}
+              keyboardType="number-pad"
+              placeholder={String(car?.current_odometer ?? 0)}
+              placeholderTextColor={colors.textWeak}
+            />
+            {errors.lastOdo && <Text style={s.errorText}>{errors.lastOdo}</Text>}
+          </>
+        )}
+
+        {datePick && (
+          <DateTimePicker
+            value={lastDoneDate}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={(event: DateTimePickerEvent, d?: Date) => {
+              if (Platform.OS === 'android') setDatePick(false);
+              if (d && event.type !== 'dismissed') setLastDoneDate(d);
+            }}
+            maximumDate={new Date()}
+          />
+        )}
+        {Platform.OS === 'ios' && datePick && (
+          <TouchableOpacity
+            style={s.doneBtn}
+            onPress={() => { setDatePick(false); setFocused(null); }}
+          >
+            <Text style={s.doneBtnText}>{t('common.done')}</Text>
+          </TouchableOpacity>
+        )}
+
         {/* ── Интервал ─────────────────────────────────────────────────── */}
         <Text style={s.fieldLabel}>
           {type === 'mileage'
@@ -433,6 +563,22 @@ function makeStyles(th: AppTheme) {
     },
     inputFocused: { borderColor: colors.borderAccent },
     inputError:   { borderColor: colors.statusDue.text },
+
+    // ── Дата «когда сделано в последний раз» ────────────────────────────────
+    dateRow: {
+      flexDirection:  'row',
+      alignItems:     'center',
+      justifyContent: 'space-between',
+    },
+    inputText: { color: colors.textPrimary, ...typography.cardText },
+    dateIcon:  { fontSize: 18 },
+    doneBtn: {
+      alignSelf:         'flex-end',
+      paddingHorizontal: 16,
+      paddingVertical:   4,
+      marginBottom:      4,
+    },
+    doneBtnText: { color: colors.accent, ...typography.cardTextMedium },
 
     // ── Переключатель типа ──────────────────────────────────────────────────
     typeRow: {

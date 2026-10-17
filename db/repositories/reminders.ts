@@ -4,6 +4,7 @@
 
 import { openDatabase, Reminder } from '../database';
 import { getCar } from './cars';
+import { calcReminderRow } from '@/utils/reminders';
 
 /** Сегодня в формате 'YYYY-MM-DD' по локальному времени. */
 function todayStr(): string {
@@ -73,6 +74,14 @@ export async function addReminder(reminder: NewReminder): Promise<number> {
     last_date,
     reminder.warn_before
   );
+
+  // start_*/last_* теперь могут быть заданы «задним числом» из формы
+  // (прошлая дата/пробег последней замены) — регламент не обязательно
+  // стартует «в норме». primeNotifiedStatus() не даёт ближайшему
+  // scheduleReminderNotifications() принять уже известный статус за
+  // переход и прислать лишний push (см. её комментарий выше).
+  await primeNotifiedStatus(result.lastInsertRowId);
+
   return result.lastInsertRowId;
 }
 
@@ -123,6 +132,36 @@ export async function syncReminderFromRecords(reminderId: number): Promise<void>
 // добавлялась работа задним числом, и не откатывался при удалении записи.
 
 /**
+ * Выставить notified_status регламента в соответствии с его ТЕКУЩИМ статусом
+ * (только type='mileage' — только для него notified_status имеет смысл,
+ * см. setNotifiedStatus).
+ *
+ * Зачем нужна: до этой правки регламент при создании/редактировании всегда
+ * стартовал «в норме», поэтому notified_status (по умолчанию пустой, то есть
+ * «ok») всегда совпадал с реальным статусом — переходов не было, push не
+ * слался. Теперь форма регламента позволяет задать прошлую дату/пробег
+ * последней замены (start_date/start_odometer), из-за чего регламент может
+ * оказаться уже «скоро» или «пора» сразу после сохранения. Без этой функции
+ * ближайший scheduleReminderNotifications() увидел бы notified_status='ok'
+ * (дефолт) против реального «due» и воспринял бы это как УХУДШЕНИЕ статуса —
+ * и немедленно прислал бы push, хотя пользователь только что сам ввёл эти
+ * данные в форме и уже видит актуальный статус на экране. Эта функция
+ * «запоминает» текущий статус сразу при сохранении, чтобы такой push не
+ * считался переходом и не отправлялся.
+ *
+ * Вызывается в конце addReminder() и updateReminder().
+ */
+async function primeNotifiedStatus(id: number): Promise<void> {
+  const [reminder, car] = await Promise.all([getReminderById(id), getCar()]);
+  if (!reminder || !car || reminder.type !== 'mileage') return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const { status } = calcReminderRow(reminder, car.current_odometer, today);
+  await setNotifiedStatus(id, status === 'ok' ? null : status);
+}
+
+/**
  * Запомнить статус, о котором уже отправлено уведомление (только mileage).
  * null — сброс: регламент вернулся в норму и о следующем ухудшении нужно
  * уведомить заново. Пишет отдельным запросом, а не через updateReminder,
@@ -139,7 +178,19 @@ export async function setNotifiedStatus(
   );
 }
 
-/** Обновить параметры регламента. */
+/**
+ * Обновить параметры регламента.
+ *
+ * Форма регламента (app/add-reminder.tsx) умеет править start_date/
+ * start_odometer («когда сделано в последний раз») и для существующего, не
+ * только для нового регламента. Поэтому после UPDATE всегда вызывается
+ * syncReminderFromRecords() — она пересчитывает last_odometer/last_date:
+ * если у регламента уже есть SERVICE_RECORD, last_* берутся из записи
+ * (правка start_* в этом случае ни на что не влияет, пока запись не
+ * удалена — это и есть откат, который нельзя ломать); если записей ещё
+ * нет, last_* становятся равны только что отправленным start_*. Дёшево и
+ * идемпотентно, поэтому вызывается при любой правке, не только start_*.
+ */
 export async function updateReminder(
   id: number,
   fields: Partial<Omit<Reminder, 'id' | 'car_id'>>
@@ -155,6 +206,12 @@ export async function updateReminder(
     `UPDATE reminder SET ${setClauses} WHERE id = ?;`,
     ...values, id
   );
+
+  await syncReminderFromRecords(id);
+  // Статус может поменяться из-за правки start_*/interval_*/warn_before —
+  // primeNotifiedStatus() не даёт это принять за «переход» и прислать
+  // лишний push (см. её комментарий выше).
+  await primeNotifiedStatus(id);
 }
 
 /** Удалить регламент по id. */

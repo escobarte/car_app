@@ -118,13 +118,18 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
       ok = false;
     }
 
+    // Пробег ниже текущего одометра машины — это нормально и ожидаемо:
+    // форма фиксирует, когда работа была сделана ФАКТИЧЕСКИ (часто задним
+    // числом, например «масло поменяли на 206500» при текущих 211294), а не
+    // текущее положение одометра. recalcCurrentOdometer() берёт MAX по всем
+    // записям, поэтому одна запись с меньшим пробегом не опустит его сама.
     const odoTrimmed = odo.trim();
     const parsedOdo  = parseInt(odoTrimmed, 10);
     if (!odoTrimmed) {
       setOdoError(t('service.odoRequired'));
       ok = false;
-    } else if (isNaN(parsedOdo) || parsedOdo < (car?.current_odometer ?? 0)) {
-      setOdoError(t('common.errorOdometer'));
+    } else if (isNaN(parsedOdo) || parsedOdo < 0) {
+      setOdoError(t('service.odoInvalid'));
       ok = false;
     }
 
