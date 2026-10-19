@@ -145,6 +145,7 @@ const en: TranslationKeys = {
     warnDays:       'days before due',
     typeLabel:      'Type',
     lastDoneTime:         'Last done',
+    lastDoneTimeOdo:      'Odometer at last done, km',
     lastDoneMileageDate:  'Date of last replacement',
     lastDoneMileageOdo:   'Odometer at last replacement',
     saveBtn:        'Save schedule',

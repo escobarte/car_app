@@ -71,7 +71,12 @@ export type Reminder = {
   type: 'mileage' | 'time';
   interval_km: number | null;
   interval_days: number | null;
-  /** Точка старта регламента (момент создания). Неизменна. */
+  /**
+   * Точка старта регламента — «когда сделано в последний раз» (можно
+   * задать/поправить в форме регламента, не только при создании).
+   * Для type='time' пробег необязателен: NO_ODOMETER (utils/reminders.ts),
+   * если поле оставили пустым — калькуляция по времени его не использует.
+   */
   start_odometer: number;
   start_date: string;
   /** Производные: последняя закрывшая запись SERVICE_RECORD, иначе start_*. */

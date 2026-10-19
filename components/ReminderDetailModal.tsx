@@ -17,7 +17,7 @@ import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import { formatMoney } from '@/constants/currencies';
 import { Car, ServiceRecord, Reminder } from '@/db';
-import { type ReminderRow, type StatusKind } from '@/utils/reminders';
+import { type ReminderRow, type StatusKind, NO_ODOMETER } from '@/utils/reminders';
 
 // ─── Пропсы ───────────────────────────────────────────────────────────────────
 
@@ -135,11 +135,19 @@ export default function ReminderDetailModal({
               <Text style={s.rowValue}>{reminder.last_date || '—'}</Text>
             </View>
 
-            {reminder.last_odometer > 0 && (
+            {/*
+              mileage — пробег всегда есть (обязательное поле формы), строку
+              показываем только если он реально положительный (подстраховка).
+              time — пробег необязателен (доработка 3): строку показываем
+              всегда, а «—» вместо числа — это и есть реакция на NO_ODOMETER.
+            */}
+            {(reminder.type === 'time' || reminder.last_odometer > 0) && (
               <View style={s.row}>
                 <Text style={s.rowLabel}>{t('reminderDetail.lastOdo')}</Text>
                 <Text style={s.rowValue}>
-                  {reminder.last_odometer.toLocaleString()} {t('common.km')}
+                  {reminder.last_odometer !== NO_ODOMETER && reminder.last_odometer >= 0
+                    ? `${reminder.last_odometer.toLocaleString()} ${t('common.km')}`
+                    : '—'}
                 </Text>
               </View>
             )}

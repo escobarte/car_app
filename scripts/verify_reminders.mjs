@@ -6,7 +6,10 @@
  *  - syncReminderFromRecords() — last_odometer/last_date берутся из записи
  *    с САМОЙ ПОЗДНЕЙ ДАТОЙ (не с наибольшим пробегом), с откатом на start_*;
  *  - «Сделано» с пробегом ниже текущего не опускает car.current_odometer
- *    (recalcCurrentOdometer — MAX, не прямое присваивание).
+ *    (recalcCurrentOdometer — MAX, не прямое присваивание);
+ *  - NO_ODOMETER (доработка 3): необязательный пробег при последнем
+ *    выполнении для type='time' не участвует в расчёте и переживает
+ *    «Сделано» + откат так же, как любой другой last_odometer.
  *
  * Почему не импортирует db/repositories/*.ts напрямую: они построены на
  * expo-sqlite, который требует нативный Expo-раннтайм. Ключевые SQL-запросы
@@ -71,6 +74,12 @@ function freshDb() {
   `);
   return db;
 }
+
+// Зеркало utils/reminders.ts: NO_ODOMETER — сентинел «пробег не указан»
+// (доработка 3, необязательное поле «Пробег при последнем выполнении» для
+// type='time'). Колонка start_odometer/last_odometer остаётся NOT NULL
+// INTEGER — миграция схемы не нужна.
+const NO_ODOMETER = -1;
 
 // ─── Зеркало utils/reminders.ts: calcReminderRow() ──────────────────────────
 
@@ -289,6 +298,46 @@ section('Сценарий 5: запись с пробегом ниже теку�
 
   const reminder = db.prepare('SELECT * FROM reminder WHERE id = 1;').get();
   check('регламент «Замена масла» получил last_odometer = 206500', reminder.last_odometer === 206500);
+}
+
+// ─── Сценарий 6: time, «пробег при последнем выполнении» не указан ─────────
+// Доработка 3: для type='time' это поле необязательное и чисто
+// информационное — calcReminderRow() не должен его читать вообще, статус/
+// срок считаются только по last_date. NO_ODOMETER на выходе — это и есть
+// признак «не указано» для UI (компонент показывает «—»).
+
+section('Сценарий 6: time, start_odometer = NO_ODOMETER (поле пустое) не влияет на статус/срок');
+{
+  const db = freshDb();
+  insertReminder(db, {
+    id: 1, title: 'Гос. ТО', type: 'time',
+    interval_days: 365, start_odometer: NO_ODOMETER, start_date: daysAgo(182), warn_before: 25,
+  });
+  const reminder = db.prepare('SELECT * FROM reminder WHERE id = 1;').get();
+  check('last_odometer сохранился как NO_ODOMETER (-1)', reminder.last_odometer === NO_ODOMETER,
+    `получено ${reminder.last_odometer}`);
+
+  const row = calcReminderRow(reminder, 0, today);
+  check('остаток = 183 дня — как в сценарии 3, пробег не участвует', row.remaining === 183,
+    `получено ${row.remaining}`);
+  check('статус = ok', row.status === 'ok', `получено ${row.status}`);
+
+  // «Сделано» на этот регламент — запись всегда содержит реальный пробег
+  // (ТЗ 6.3, поле обязательно в форме), поэтому last_odometer перестаёт
+  // быть NO_ODOMETER, как только появляется хоть одна запись.
+  insertService(db, { reminderId: 1, date: daysAgo(1), odometer: 211294 });
+  syncReminderFromRecords(db, 1);
+  const afterDone = db.prepare('SELECT * FROM reminder WHERE id = 1;').get();
+  check('после «Сделано» last_odometer = 211294 (больше не NO_ODOMETER)',
+    afterDone.last_odometer === 211294, `получено ${afterDone.last_odometer}`);
+
+  // Откат: удаляем единственную запись — last_* возвращается на start_*,
+  // то есть снова NO_ODOMETER.
+  db.prepare('DELETE FROM service_record WHERE reminder_id = 1;').run();
+  syncReminderFromRecords(db, 1);
+  const afterRollback = db.prepare('SELECT * FROM reminder WHERE id = 1;').get();
+  check('после отката last_odometer снова NO_ODOMETER',
+    afterRollback.last_odometer === NO_ODOMETER, `получено ${afterRollback.last_odometer}`);
 }
 
 // ─── Итог ────────────────────────────────────────────────────────────────────

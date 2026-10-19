@@ -40,7 +40,7 @@ import {
   Car, ServiceRecord, Reminder,
 } from '@/db';
 import {
-  calcReminderRow, STATUS_ORDER,
+  calcReminderRow, STATUS_ORDER, NO_ODOMETER,
   type StatusKind, type ReminderRow,
 } from '@/utils/reminders';
 import { scheduleReminderNotifications } from '@/notifications/engine';
@@ -185,6 +185,15 @@ export default function ServiceScreen() {
     return `${t('service.intervalDays', { n: r.interval_days ?? '' })} · ${t('service.warnBeforeDays', { n: r.warn_before })}`;
   }
 
+  // ── «Пробег при последнем выполнении» (доработка 3) ──────────────────────
+  // Только для type='time' — необязательное информационное поле, на срок/
+  // статус не влияет. «—», когда не указано (NO_ODOMETER).
+  function lastOdoInfoLabel(row: ReminderRow): string {
+    const odo = row.reminder.last_odometer;
+    const value = odo !== NO_ODOMETER && odo >= 0 ? `${odo.toLocaleString()} ${t('common.km')}` : '—';
+    return `${t('reminderDetail.lastOdo')}: ${value}`;
+  }
+
   // ── Загрузка ──────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -266,6 +275,9 @@ export default function ServiceScreen() {
                       {remainingLabel(row)}
                     </Text>
                     <Text style={s.intervalText}>{intervalLabel(row)}</Text>
+                    {reminder.type === 'time' && (
+                      <Text style={s.lastOdoInfoText}>{lastOdoInfoLabel(row)}</Text>
+                    )}
                   </View>
 
                   {/* Кнопка «Сделано» */}
@@ -460,6 +472,12 @@ function makeStyles(th: AppTheme, topInset: number) {
       color:    colors.textWeak,
       fontSize: 11,
       fontWeight: '400' as const,
+    },
+    lastOdoInfoText: {
+      color:      colors.textWeak,
+      fontSize:   11,
+      fontWeight: '400' as const,
+      marginTop:  2,
     },
     doneBtn: {
       paddingHorizontal: 16,

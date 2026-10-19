@@ -34,6 +34,7 @@ import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import { currencySymbol } from '@/constants/currencies';
 import { serviceRepo, Reminder, Car } from '@/db';
+import { useKeyboardAwareScroll } from '@/hooks/use-keyboard-aware-scroll';
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,8 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
   const [focused,   setFocused]   = useState<string | null>(null);
   const [odoError,  setOdoError]  = useState('');
   const [dateError, setDateError] = useState('');
+
+  const { scrollRef, onFieldFocus } = useKeyboardAwareScroll();
 
   // Каждый раз при открытии — сбрасываем поля.
   useEffect(() => {
@@ -200,6 +203,7 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
           </View>
 
           <ScrollView
+            ref={scrollRef}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="interactive"
@@ -253,7 +257,7 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
               style={[inputStyle('odo'), odoError ? s.inputError : undefined]}
               value={odo}
               onChangeText={(v) => { setOdo(v); if (odoError) setOdoError(''); }}
-              onFocus={() => setFocused('odo')}
+              onFocus={(e) => { setFocused('odo'); onFieldFocus(e); }}
               onBlur={() => setFocused(null)}
               keyboardType="number-pad"
               placeholder={String(car?.current_odometer ?? 0)}
@@ -269,7 +273,7 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
               style={inputStyle('cost')}
               value={cost}
               onChangeText={setCost}
-              onFocus={() => setFocused('cost')}
+              onFocus={(e) => { setFocused('cost'); onFieldFocus(e); }}
               onBlur={() => setFocused(null)}
               keyboardType="decimal-pad"
               placeholder="0.00"
@@ -282,7 +286,7 @@ export default function MarkDoneSheet({ reminder, car, onClose, onSaved }: Props
               style={[inputStyle('note'), s.inputMultiline]}
               value={note}
               onChangeText={setNote}
-              onFocus={() => setFocused('note')}
+              onFocus={(e) => { setFocused('note'); onFieldFocus(e); }}
               onBlur={() => setFocused(null)}
               placeholder="…"
               placeholderTextColor={colors.textWeak}

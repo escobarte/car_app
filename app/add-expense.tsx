@@ -44,6 +44,7 @@ import {
   getExpenseById,
   updateExpense,
 } from '@/db/repositories/expenses';
+import { KEYBOARD_AVOIDING_BEHAVIOR, useKeyboardAwareScroll } from '@/hooks/use-keyboard-aware-scroll';
 
 // ─── Константы сетки (нужны и в компоненте, и в StyleSheet) ────────────────
 const GRID_PAD = 16;   // горизонтальный padding экрана
@@ -115,6 +116,8 @@ export default function AddExpenseScreen() {
   const [focused, setFocused] = useState<string | null>(null);
   const [errors,  setErrors]  = useState<{ category?: string; amount?: string; odometer?: string }>({});
   const [saving,  setSaving]  = useState(false);
+
+  const { scrollRef, onFieldFocus } = useKeyboardAwareScroll();
 
   // ── Загрузка ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -230,7 +233,7 @@ export default function AddExpenseScreen() {
   return (
     <KeyboardAvoidingView
       style={s.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
     >
       {/* ── Шапка ─────────────────────────────────────────────────────────── */}
       <View style={s.header}>
@@ -246,9 +249,11 @@ export default function AddExpenseScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={s.scroll}
         contentContainerStyle={s.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {/* ── Сетка категорий ───────────────────────────────────────────── */}
@@ -310,7 +315,7 @@ export default function AddExpenseScreen() {
             setAmount(v);
             if (errors.amount) setErrors((p) => ({ ...p, amount: undefined }));
           }}
-          onFocus={() => setFocused('amount')}
+          onFocus={(e) => { setFocused('amount'); onFieldFocus(e); }}
           onBlur={()  => setFocused(null)}
           keyboardType="decimal-pad"
           placeholder="0.00"
@@ -326,7 +331,7 @@ export default function AddExpenseScreen() {
           style={[inputStyle('description'), s.inputMultiline]}
           value={description}
           onChangeText={setDescription}
-          onFocus={() => setFocused('description')}
+          onFocus={(e) => { setFocused('description'); onFieldFocus(e); }}
           onBlur={()  => setFocused(null)}
           placeholder="…"
           placeholderTextColor={colors.textWeak}
@@ -369,7 +374,7 @@ export default function AddExpenseScreen() {
           style={inputStyle('odometer', !!errors.odometer)}
           value={odometer}
           onChangeText={(v) => { setOdometer(v); if (errors.odometer) setErrors((p) => ({ ...p, odometer: undefined })); }}
-          onFocus={() => setFocused('odometer')}
+          onFocus={(e) => { setFocused('odometer'); onFieldFocus(e); }}
           onBlur={()  => setFocused(null)}
           keyboardType="number-pad"
           placeholder={currentOdo != null ? String(currentOdo) : '—'}

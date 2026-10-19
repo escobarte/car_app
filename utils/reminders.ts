@@ -9,6 +9,15 @@ import { Reminder } from '@/db';
 
 export type StatusKind = 'ok' | 'soon' | 'due';
 
+/**
+ * Сентинел «пробег не указан» для start_odometer/last_odometer (ТЗ 6.3,
+ * доработка 3). Нужен только для type='time': там пробег последнего
+ * выполнения — необязательное информационное поле, а колонки в БД остаются
+ * NOT NULL INTEGER (без миграции схемы). Расчёта статуса/срока не касается —
+ * calcReminderRow для type='time' last_odometer вообще не читает.
+ */
+export const NO_ODOMETER = -1;
+
 export type ReminderRow = {
   reminder:  Reminder;
   remaining: number;    // км или дней; отрицательное → просрочка

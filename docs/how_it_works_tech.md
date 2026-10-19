@@ -23,6 +23,7 @@
 | Форма заправки (живой превью расхода) | `app/add-fuel.tsx` |
 | Проверка формулы и правила base_odometer | `scripts/verify_fuel_consumption.mjs` |
 | Проверка статуса регламентов и откатов last_*/current_odometer | `scripts/verify_reminders.mjs` |
+| Клавиатура не перекрывает поля форм (общий хук) | `hooks/use-keyboard-aware-scroll.ts` |
 
 ---
 
@@ -452,13 +453,28 @@ SELECT odometer, date FROM service_record
 
 Форма `app/add-reminder.tsx` теперь сама передаёт `start_date` (для
 `type='time'` — поле «Когда сделано в последний раз»; для `type='mileage'` —
-«Дата последней замены») и, для `type='mileage'`, `start_odometer` («Пробег
-при последней замене»). Оба поля предзаполнены сегодня/текущим пробегом
-(значит, если их не трогать — результат как раньше), но можно указать и
-прошлую точку — например, замену масла, сделанную до того, как завели
-регламент (`206500` км при текущих `211294` км). Пробег валидируется
-диапазоном `0 ≤ значение ≤ current_odometer` (`addReminder.errorLastOdo`) —
-нельзя указать замену в будущем по пробегу, но можно в прошлом.
+«Дата последней замены») и `start_odometer` для обоих типов. Для
+`type='mileage'` поле «Пробег при последней замене» обязательно и
+предзаполнено сегодня/текущим пробегом (если его не трогать — результат как
+раньше), но можно указать и прошлую точку — например, замену масла,
+сделанную до того, как завели регламент (`206500` км при текущих `211294`
+км). Пробег валидируется диапазоном `0 ≤ значение ≤ current_odometer`
+(`addReminder.errorLastOdo`) — нельзя указать замену в будущем по пробегу, но
+можно в прошлом.
+
+Для `type='time'` под полем даты есть второе поле — «Пробег при последнем
+выполнении, км» (`addReminder.lastDoneTimeOdo`), **необязательное**: можно
+оставить пустым (по умолчанию и пустое). Это чисто информационное поле —
+`calcReminderRow()` для `type='time'` читает только `last_date`, `last_odometer`
+не трогает (строка 401-404 выше). Пустое значение сохраняется в тот же
+`start_odometer` как сентинел `NO_ODOMETER = -1` (`utils/reminders.ts`) —
+колонка в SQLite остаётся `start_odometer INTEGER NOT NULL DEFAULT 0`
+(`db/schema.ts`), миграция не понадобилась. В `ReminderDetailModal` и в
+карточке регламента (`app/(tabs)/service.tsx`, функция `lastOdoInfoLabel()`)
+сентинел отображается как «—» вместо числа. Как и `start_odometer` для
+`type='mileage'`, значение переопределяется первой же `SERVICE_RECORD` по
+регламенту через `syncReminderFromRecords()` — откат при удалении записи
+работает одинаково для обоих типов.
 
 При редактировании существующего регламента форма предзаполняет эти поля не
 из `start_*` (который может быть «застывшим» значением от момента создания),
@@ -621,6 +637,27 @@ categories, reminders, fuelEntries, expenses, serviceRecords }`.
   потом включены на уже «due» регламенте) — `notified_status` может
   временно не совпадать с видимым статусом до следующего
   `scheduleReminderNotifications()`.
+- **На Android `windowSoftInputMode="adjustResize"` (манифест, дефолт
+  Expo-шаблона) сам по себе не поднимает поля над клавиатурой при
+  `edgeToEdgeEnabled: true` (`app.config.js`).** Edge-to-edge рисует поверх
+  системных баров, и `adjustResize` не ресайзит окно так, как раньше —
+  клавиатуру нужно явно отрабатывать на стороне RN. Поэтому все формы с
+  полями ввода (`add-fuel.tsx`, `add-expense.tsx`, `add-reminder.tsx`,
+  `MarkDoneSheet.tsx`, модалки в `settings.tsx`) оборачиваются в
+  `KeyboardAvoidingView` с `behavior: 'height'` на Android (и `'padding'` на
+  iOS) — константа `KEYBOARD_AVOIDING_BEHAVIOR` в
+  `hooks/use-keyboard-aware-scroll.ts`. До этой правки часть экранов
+  (`add-fuel.tsx`, `add-expense.tsx`, `add-reminder.tsx`) передавала
+  `behavior: undefined` на Android, то есть не делала вообще ничего — именно
+  это и было видимым багом («поле и кнопка „Сохранить“ под клавиатурой»).
+- **Автопрокрутка сфокусированного поля — через
+  `ScrollView.scrollResponderScrollNativeHandleToKeyboard()`, а не через
+  стороннюю библиотеку.** Этот метод жив в RN 0.81 (часть
+  `ScrollResponderMixin`) и десятилетиями используется в «keyboard aware
+  scroll view»-библиотеках; `useKeyboardAwareScroll()` оборачивает его в
+  хук, который даёт `scrollRef` (на `ScrollView`) и `onFieldFocus` (вызывать
+  из `onFocus` каждого `TextInput`). `automaticallyAdjustKeyboardInsets` у
+  `ScrollView` сюда не подошёл — это iOS-only проп, на Android не работает.
 
 ---
 

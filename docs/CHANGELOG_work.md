@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-10-19
+- Клавиатура больше не перекрывает поля форм: на Android экраны «Расход», «Заправка» и «Регламент» передавали `behavior: undefined` в KeyboardAvoidingView (ничего не делали), в отличие от уже рабочего MarkDoneSheet/settings.tsx (`'height'`). Причина — `edgeToEdgeEnabled: true` (app.config.js) не даёт `windowSoftInputMode="adjustResize"` (манифест, дефолт) реально ресайзить окно; это пришлось отрабатывать на стороне RN.
+- Новый общий хук `hooks/use-keyboard-aware-scroll.ts`: `KEYBOARD_AVOIDING_BEHAVIOR` (iOS `'padding'` / Android `'height'`) и `useKeyboardAwareScroll()` — автопрокрутка сфокусированного поля через встроенный в ScrollView `scrollResponderScrollNativeHandleToKeyboard` (без новых нативных зависимостей). Подключён во все формы с полями ввода: `add-expense.tsx`, `add-fuel.tsx`, `add-reminder.tsx`, `MarkDoneSheet.tsx` (+ `keyboardDismissMode="on-drag"` на экранах, где его не было).
+- Регламент (type=time): новое необязательное поле «Пробег при последнем выполнении, км» под датой — чисто информационное, в расчёт срока/статуса не входит. Пустое значение хранится как сентинел `NO_ODOMETER = -1` в тех же `start_odometer`/`last_odometer` (миграция схемы не понадобилась — колонка осталась NOT NULL), на экране показывается как «—» (карточка регламента + детали). Переопределяется первой же записью «Сделано», откат при удалении работает как и для остальных last_*.
+- scripts/verify_reminders.mjs: добавлен сценарий 6 (NO_ODOMETER не влияет на статус/срок type=time, переопределяется «Сделано», откатывается при удалении записи). npx tsc --noEmit и npx eslint — чисто (кроме уже существовавших до этой правки предупреждений в других файлах).
+- файлы: hooks/use-keyboard-aware-scroll.ts (новый), app/add-expense.tsx, app/add-fuel.tsx, app/add-reminder.tsx, app/(tabs)/service.tsx, components/MarkDoneSheet.tsx, components/ReminderDetailModal.tsx, db/database.ts, utils/reminders.ts, i18n/locales/ru.ts, i18n/locales/en.ts, scripts/verify_reminders.mjs, docs/ТЗ_приложение_авто_финал.md, docs/how_it_works_tech.md, docs/how_it_works_simple.md
+- статус: ждёт проверки на телефоне
+
 ## 2026-10-17
 - Регламенты: можно задать «когда сделано в последний раз» задним числом, и форма «Сделано» больше не блокирует пробег ниже текущего одометра — обе правки связаны (last_*/start_* и откат).
 - db/repositories/reminders.ts: addReminder()/updateReminder() теперь принимают start_date/start_odometer с прошлой датой/пробегом (раньше новый регламент всегда стартовал «в норме» с сегодня/текущим пробегом); updateReminder() вызывает syncReminderFromRecords() после правки, чтобы last_* подхватили новый start_*, если записей обслуживания ещё нет. Новая primeNotifiedStatus() (mileage) сразу выставляет notified_status под реально посчитанный статус — без неё первый scheduleReminderNotifications() после сохранения backdated-регламента принял бы уже известный статус за «переход» и прислал лишний push.

@@ -40,6 +40,7 @@ import {
   getFuelEntryById,
   updateFuelEntry,
 } from '@/db/repositories/fuel';
+import { KEYBOARD_AVOIDING_BEHAVIOR, useKeyboardAwareScroll } from '@/hooks/use-keyboard-aware-scroll';
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
@@ -106,6 +107,8 @@ export default function AddFuelScreen() {
   const [partialLiters, setPartialLiters] = useState(0);
   const [saving,          setSaving]          = useState(false);
   const [loadingEdit,     setLoadingEdit]     = useState(isEdit);
+
+  const { scrollRef, onFieldFocus } = useKeyboardAwareScroll();
 
   useEffect(() => {
     async function load() {
@@ -256,7 +259,7 @@ export default function AddFuelScreen() {
   return (
     <KeyboardAvoidingView
       style={s.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
     >
       {/* ── Шапка ─────────────────────────────────────────────────────────── */}
       <View style={s.header}>
@@ -273,9 +276,11 @@ export default function AddFuelScreen() {
 
       {/* ── Форма ─────────────────────────────────────────────────────────── */}
       <ScrollView
+        ref={scrollRef}
         style={s.scroll}
         contentContainerStyle={s.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {/* Дата */}
@@ -314,7 +319,7 @@ export default function AddFuelScreen() {
           style={inputStyle('odometer')}
           value={odometer}
           onChangeText={(v) => { setOdometer(v); setErrors((p) => ({ ...p, odometer: '' })); }}
-          onFocus={() => setFocused('odometer')}
+          onFocus={(e) => { setFocused('odometer'); onFieldFocus(e); }}
           onBlur={() => setFocused(null)}
           keyboardType="number-pad"
           placeholder={String(currentOdometer)}
@@ -329,7 +334,7 @@ export default function AddFuelScreen() {
           style={inputStyle('liters')}
           value={liters}
           onChangeText={(v) => { setLiters(v); setErrors((p) => ({ ...p, liters: '' })); }}
-          onFocus={() => setFocused('liters')}
+          onFocus={(e) => { setFocused('liters'); onFieldFocus(e); }}
           onBlur={() => setFocused(null)}
           keyboardType="decimal-pad"
           placeholder="0.00"
@@ -344,7 +349,7 @@ export default function AddFuelScreen() {
           style={inputStyle('totalCost')}
           value={totalCost}
           onChangeText={(v) => { setTotalCost(v); setErrors((p) => ({ ...p, totalCost: '' })); }}
-          onFocus={() => setFocused('totalCost')}
+          onFocus={(e) => { setFocused('totalCost'); onFieldFocus(e); }}
           onBlur={() => setFocused(null)}
           keyboardType="decimal-pad"
           placeholder="0.00"

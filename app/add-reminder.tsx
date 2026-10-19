@@ -30,7 +30,9 @@ import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import { reminderRepo, carRepo, settingsRepo, Car } from '@/db';
 import { scheduleReminderNotifications } from '@/notifications/engine';
+import { NO_ODOMETER } from '@/utils/reminders';
 import DashStatModal, { StatRow } from '@/components/DashStatModal';
+import { KEYBOARD_AVOIDING_BEHAVIOR, useKeyboardAwareScroll } from '@/hooks/use-keyboard-aware-scroll';
 
 type ReminderType = 'mileage' | 'time';
 
@@ -77,6 +79,13 @@ export default function AddReminderScreen() {
   const [datePick,     setDatePick]     = useState(false);
   const [lastOdo,      setLastOdo]      = useState('');
 
+  // «Пробег при последнем выполнении» для type='time' — отдельное от lastOdo
+  // состояние: необязательное информационное поле (не участвует в расчёте
+  // срока/статуса), по умолчанию пустое, а не текущий пробег. Пустое значение
+  // сохраняется как NO_ODOMETER (utils/reminders.ts) — колонка start_odometer/
+  // last_odometer в БД остаётся NOT NULL, без миграции схемы.
+  const [lastDoneOdoInfo, setLastDoneOdoInfo] = useState('');
+
   // ── UI-состояние ─────────────────────────────────────────────────────────
   const [car,         setCar]         = useState<Car | null>(null);
   const [focused,     setFocused]     = useState<string | null>(null);
@@ -85,11 +94,14 @@ export default function AddReminderScreen() {
     interval?: string;
     warn?: string;
     lastOdo?: string;
+    lastOdoInfo?: string;
   }>({});
   const [saving,      setSaving]      = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(isEdit);
   const [confirmRows, setConfirmRows] = useState<StatRow[]>([]);
   const [confirmTitle, setConfirmTitle] = useState('');
+
+  const { scrollRef, onFieldFocus } = useKeyboardAwareScroll();
 
   // ── Загрузка машины (для дефолта/проверки «пробег при последней замене») ──
   useEffect(() => {
@@ -116,6 +128,14 @@ export default function AddReminderScreen() {
       // (см. комментарий в db/repositories/reminders.ts).
       setLastDoneDate(new Date(r.last_date + 'T00:00:00'));
       setLastOdo(String(r.last_odometer));
+      // Необязательное поле только для type='time' — у регламента, заведённого
+      // как mileage, здесь всегда «не указано», даже если last_odometer на
+      // нём есть (это значение из ДРУГОГО поля, под другим пробегом).
+      setLastDoneOdoInfo(
+        r.type === 'time' && r.last_odometer !== NO_ODOMETER
+          ? String(r.last_odometer)
+          : ''
+      );
       setLoadingEdit(false);
     }).catch(e => {
       console.error('[AddReminder] load edit', e);
@@ -148,6 +168,18 @@ export default function AddReminderScreen() {
       if (!lastOdo.trim() || isNaN(lo) || lo < 0 || lo > currentOdo) {
         errs.lastOdo = t('addReminder.errorLastOdo');
       }
+    } else {
+      // «Пробег при последнем выполнении» для type='time' — необязательное
+      // поле, то же ограничение диапазона применяется, только если его
+      // вообще заполнили.
+      const trimmed = lastDoneOdoInfo.trim();
+      if (trimmed) {
+        const lo = parseInt(trimmed, 10);
+        const currentOdo = car?.current_odometer ?? 0;
+        if (isNaN(lo) || lo < 0 || lo > currentOdo) {
+          errs.lastOdoInfo = t('addReminder.errorLastOdo');
+        }
+      }
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -164,11 +196,15 @@ export default function AddReminderScreen() {
 
       // start_date — всегда «когда сделано в последний раз» (для time это
       // и есть точка отсчёта интервала; для mileage используется только
-      // вместе с start_odometer). start_odometer передаём только для
-      // mileage — для time он не участвует в расчёте (utils/reminders.ts),
-      // трогать его смысла нет.
+      // вместе с start_odometer). Для mileage start_odometer обязателен; для
+      // time он чисто информационный (в расчёт срока/статуса не входит —
+      // utils/reminders.ts) и необязателен — пустое поле уходит как
+      // NO_ODOMETER.
       const start_date     = toISO(lastDoneDate);
-      const start_odometer = type === 'mileage' ? parseInt(lastOdo.trim(), 10) : undefined;
+      const lastOdoInfoTrim = lastDoneOdoInfo.trim();
+      const start_odometer = type === 'mileage'
+        ? parseInt(lastOdo.trim(), 10)
+        : (lastOdoInfoTrim ? parseInt(lastOdoInfoTrim, 10) : NO_ODOMETER);
 
       if (isEdit) {
         await reminderRepo.updateReminder(editId!, {
@@ -178,7 +214,7 @@ export default function AddReminderScreen() {
           interval_days: type === 'time'    ? iv   : null,
           warn_before:   wb,
           start_date,
-          ...(start_odometer !== undefined ? { start_odometer } : {}),
+          start_odometer,
         });
       } else {
         // start_date/start_odometer переданы с формы — регламент может
@@ -193,7 +229,7 @@ export default function AddReminderScreen() {
           interval_days: type === 'time'    ? iv   : null,
           warn_before:   wb,
           start_date,
-          ...(start_odometer !== undefined ? { start_odometer } : {}),
+          start_odometer,
         });
       }
 
@@ -299,7 +335,7 @@ export default function AddReminderScreen() {
   return (
     <KeyboardAvoidingView
       style={s.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={KEYBOARD_AVOIDING_BEHAVIOR}
     >
       {/* ── Шапка ──────────────────────────────────────────────────────── */}
       <View style={s.header}>
@@ -317,9 +353,11 @@ export default function AddReminderScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         style={s.scroll}
         contentContainerStyle={s.content}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {/* ── Название ─────────────────────────────────────────────────── */}
@@ -331,7 +369,7 @@ export default function AddReminderScreen() {
             setName(v);
             if (errors.name) setErrors((p) => ({ ...p, name: undefined }));
           }}
-          onFocus={() => setFocused('name')}
+          onFocus={(e) => { setFocused('name'); onFieldFocus(e); }}
           onBlur={()  => setFocused(null)}
           placeholder={t('addReminder.namePlaceholder')}
           placeholderTextColor={colors.textWeak}
@@ -374,6 +412,24 @@ export default function AddReminderScreen() {
               <Text style={s.inputText}>{toDisplay(lastDoneDate, locale)}</Text>
               <Text style={s.dateIcon}>📅</Text>
             </TouchableOpacity>
+
+            {/* Необязательное — чисто информационное, в расчёт срока/статуса
+                не входит (utils/reminders.ts). Пустое значение допустимо. */}
+            <Text style={s.fieldLabel}>{t('addReminder.lastDoneTimeOdo')}</Text>
+            <TextInput
+              style={inputStyle('lastOdoInfo', !!errors.lastOdoInfo)}
+              value={lastDoneOdoInfo}
+              onChangeText={(v) => {
+                setLastDoneOdoInfo(v);
+                if (errors.lastOdoInfo) setErrors((p) => ({ ...p, lastOdoInfo: undefined }));
+              }}
+              onFocus={(e) => { setFocused('lastOdoInfo'); onFieldFocus(e); }}
+              onBlur={()  => setFocused(null)}
+              keyboardType="number-pad"
+              placeholder="—"
+              placeholderTextColor={colors.textWeak}
+            />
+            {errors.lastOdoInfo && <Text style={s.errorText}>{errors.lastOdoInfo}</Text>}
           </>
         ) : (
           <>
@@ -395,7 +451,7 @@ export default function AddReminderScreen() {
                 setLastOdo(v);
                 if (errors.lastOdo) setErrors((p) => ({ ...p, lastOdo: undefined }));
               }}
-              onFocus={() => setFocused('lastOdo')}
+              onFocus={(e) => { setFocused('lastOdo'); onFieldFocus(e); }}
               onBlur={()  => setFocused(null)}
               keyboardType="number-pad"
               placeholder={String(car?.current_odometer ?? 0)}
@@ -439,7 +495,7 @@ export default function AddReminderScreen() {
             setInterval(v);
             if (errors.interval) setErrors((p) => ({ ...p, interval: undefined }));
           }}
-          onFocus={() => setFocused('interval')}
+          onFocus={(e) => { setFocused('interval'); onFieldFocus(e); }}
           onBlur={()  => setFocused(null)}
           keyboardType="number-pad"
           placeholder={type === 'mileage' ? '8000' : '365'}
@@ -463,7 +519,7 @@ export default function AddReminderScreen() {
             setWarnBefore(v);
             if (errors.warn) setErrors((p) => ({ ...p, warn: undefined }));
           }}
-          onFocus={() => setFocused('warn')}
+          onFocus={(e) => { setFocused('warn'); onFieldFocus(e); }}
           onBlur={()  => setFocused(null)}
           keyboardType="number-pad"
           placeholder={type === 'mileage' ? '500' : '14'}

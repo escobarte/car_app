@@ -163,6 +163,7 @@ const ru = {
     warnDays:       'дней до срока',
     typeLabel:      'Тип',
     lastDoneTime:         'Когда сделано в последний раз',
+    lastDoneTimeOdo:      'Пробег при последнем выполнении, км',
     lastDoneMileageDate:  'Дата последней замены',
     lastDoneMileageOdo:   'Пробег при последней замене',
     saveBtn:        'Сохранить регламент',
