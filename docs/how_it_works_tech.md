@@ -682,6 +682,23 @@ categories, reminders, fuelEntries, expenses, serviceRecords }`.
   хук, который даёт `scrollRef` (на `ScrollView`) и `onFieldFocus` (вызывать
   из `onFocus` каждого `TextInput`). `automaticallyAdjustKeyboardInsets` у
   `ScrollView` сюда не подошёл — это iOS-only проп, на Android не работает.
+- **Иконка строки расхода в списках — из категории, а не общая.**
+  `resolveExpenseIcon(category?.icon)` (`utils/icons.ts`) — тонкая обёртка
+  над уже существующим `resolveIcon()` (тот же маппинг Tabler→Ionicons, что
+  и на плитках категорий в `add-expense.tsx`/`categories.tsx`/Stats
+  `app/(tabs)/explore.tsx`, один набор иконок, не продублирован). Запасная
+  иконка `EXPENSE_FALLBACK_ICON = 'receipt-outline'` — когда категория
+  удалена (`category_id` не находится в `catMap`) или у неё пустая `icon`.
+  Подключено в трёх местах, где строился расход с общей иконкой-чеком:
+  `components/HistoryList.tsx`, `app/(tabs)/index.tsx` (`recentDisplay()`),
+  `components/RecordDetailModal.tsx`. Фон/акцентный цвет строки расхода
+  (`colors.iconBgExpense` / `colors.statusSoon.text`) не менялись — меняется
+  только сама иконка. Категории везде загружаются один раз (`catMap`), новых
+  запросов на строку не добавилось. Экран Stats (`app/(tabs)/explore.tsx`)
+  уже показывал иконку категории (`ionName(cat.icon)` на столбиках
+  «По категориям» и в модалке категории) и правки не требовал — список
+  отдельных записей внутри модалки категории своих иконок не рисует вообще
+  (только дата/сумма/описание).
 
 ---
 

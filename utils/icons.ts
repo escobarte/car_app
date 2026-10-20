@@ -32,6 +32,20 @@ export function resolveIcon(icon: string): string {
   return TABLER_TO_ION[icon] ?? icon;
 }
 
+/** Запасная иконка для расхода без категории (удалена) или без иконки. */
+export const EXPENSE_FALLBACK_ICON = 'receipt-outline';
+
+/**
+ * Иконка строки расхода в списках (История, Последние транзакции, детали).
+ * Принимает `category?.icon`, а не весь объект Category — модуль не зависит
+ * от типов БД. Берёт ту же иконку, что показана на плитке категории в форме
+ * «Расход» (resolveIcon), запасной вариант — если категория удалена
+ * (`icon` не передан) или у неё пустое поле icon.
+ */
+export function resolveExpenseIcon(icon: string | undefined | null): string {
+  return icon ? resolveIcon(icon) : EXPENSE_FALLBACK_ICON;
+}
+
 /**
  * Набор иконок для выбора при создании пользовательских категорий.
  * Только Ionicons-имена.

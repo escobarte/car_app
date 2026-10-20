@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
 import { formatMoney } from '@/constants/currencies';
+import { resolveExpenseIcon } from '@/utils/icons';
 import { FuelEntry, Expense, ServiceRecord, Category } from '@/db';
 
 // ─── Тип записи ──────────────────────────────────────────────────────────────
@@ -92,7 +93,8 @@ export default function RecordDetailModal({ record, currCode, onClose, onEdit, o
       const cat = record.category;
       const catName = cat ? (cat.key ? t(`categories.${cat.key}` as never) : cat.name) : '—';
       title = t('history.expense');
-      icon = 'receipt-outline'; iconBg = colors.iconBgExpense; iconColor = colors.statusSoon.text;
+      icon = resolveExpenseIcon(cat?.icon) as React.ComponentProps<typeof Ionicons>['name'];
+      iconBg = colors.iconBgExpense; iconColor = colors.statusSoon.text;
       rows = [
         { label: t('recordDetail.date'),     value: fmtFullDate(e.date) },
         { label: t('recordDetail.category'), value: catName },

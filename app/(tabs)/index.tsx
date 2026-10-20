@@ -30,6 +30,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/contexts/theme-context';
+import { resolveExpenseIcon } from '@/utils/icons';
 import { formatMoney } from '@/constants/currencies';
 import {
   carRepo, fuelRepo, expenseRepo, serviceRepo, reminderRepo, categoryRepo,
@@ -305,7 +306,8 @@ export default function DashboardScreen() {
       const cat = item.category;
       const catName = cat ? (cat.key ? t(`categories.${cat.key}` as never) : cat.name) : '—';
       return {
-        icon: 'receipt-outline', iconBg: colors.iconBgExpense, color: colors.statusSoon.text,
+        icon: resolveExpenseIcon(cat?.icon) as React.ComponentProps<typeof Ionicons>['name'],
+        iconBg: colors.iconBgExpense, color: colors.statusSoon.text,
         title: e.description || catName,
         amount: e.amount,
       };

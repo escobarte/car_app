@@ -34,6 +34,7 @@ import {
 } from '@/db';
 import RecordDetailModal from '@/components/RecordDetailModal';
 import SettingsGearBtn from '@/components/SettingsGearBtn';
+import { resolveExpenseIcon } from '@/utils/icons';
 
 // ─── Типы ──────────────────────────────────────────────────────────────────
 
@@ -272,7 +273,11 @@ function HistoryRow({ item, currCode, onPress, onEdit, onDelete }: RowProps) {
     content = (
       <View style={s.item}>
         <View style={[s.iconWrap, s.iconWrapExpense]}>
-          <Ionicons name="receipt-outline" size={20} color={colors.statusSoon.text} />
+          <Ionicons
+            name={resolveExpenseIcon(cat?.icon) as React.ComponentProps<typeof Ionicons>['name']}
+            size={20}
+            color={colors.statusSoon.text}
+          />
         </View>
         <View style={s.itemBody}>
           <Text style={s.itemTitle}>{catName}</Text>
