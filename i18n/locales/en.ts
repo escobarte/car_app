@@ -63,6 +63,11 @@ const en: TranslationKeys = {
     avgConsumption:  'Avg. consumption',
     perLiter:        'per liter',
     per100km:        'L/100km',
+    // Under the “Avg. consumption” value on the home screen — clarifies this
+    // is the weighted average over the WHOLE history (not the chart window,
+    // like on Stats, how_it_works_tech.md section 2.2) — otherwise the two
+    // numbers on the two screens are easy to mix up.
+    per100kmAllTime: 'L/100km\nall time',
     // Hints under the “—” in the “Avg. consumption” card (§6.2: two full tanks needed)
     consHintNoFullTank: 'mark “Full tank” to calculate',
     consHintNeedSecond: 'one more full-tank fill-up needed',
@@ -229,6 +234,12 @@ const en: TranslationKeys = {
     metricModalMonthsCount: 'Months with data',
     metricModalFillsTitle:  'Full tanks',
     metricModalMonthsTitle: 'By month',
+    noClosedSegmentHint:    'No closed segment between full tanks',
+    // Period caption under “Avg. consumption” (cons-avg) — to avoid mixing
+    // it up with “Avg. consumption” on the home screen (that one is the
+    // whole-history figure).
+    periodLabel:            'for {{range}}',
+    periodAllTime:          'all time',
   },
 
   settings: {

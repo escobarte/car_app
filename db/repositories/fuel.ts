@@ -101,11 +101,19 @@ export function calcConsumption(
  *
  * date — дата закрывающего полного бака: по ней сегмент относят к месяцу/
  * периоду везде, где считается средневзвешенный расход (так же, как сейчас
- * относят к периоду сам consumption).
+ * относят к периоду сам consumption). d1/o1 — дата и одометр ПРЕДЫДУЩЕГО
+ * полного бака (начало сегмента), d2/o2 — то же для закрывающего (= date/
+ * odometer текущего). Нужны для разбивки сегмента по календарным месяцам
+ * (getMonthlyFuelConsumption) — без них нельзя понять, какая часть длинного
+ * сегмента пришлась на какой месяц.
  */
 export type FuelSegment = {
   fullTankId:  number;
   date:        string;
+  d1:          string;   // дата предыдущего полного бака (начало сегмента)
+  o1:          number;   // одометр предыдущего полного бака
+  d2:          string;   // дата закрывающего полного бака (= date)
+  o2:          number;   // одометр закрывающего полного бака
   liters:      number;   // литры полного бака + накопленные неполные между ним и предыдущим полным
   km:          number;   // пройдено на сегменте (distance)
   consumption: number;   // calcConsumption(liters сегмента, 0, km) — уже без необходимости пересчитывать
@@ -135,7 +143,13 @@ export async function getFuelSegments(carId = 1): Promise<FuelSegment[]> {
     const consumption = calcConsumption(f.liters, partialLiters, km);
     if (consumption == null) continue; // km <= 0 — защита от неверного пробега, сегмент не создаём
 
-    segments.push({ fullTankId: f.id, date: f.date, liters: f.liters + partialLiters, km, consumption });
+    segments.push({
+      fullTankId: f.id,
+      date: f.date,
+      d1: prev.date, o1: prev.odometer,
+      d2: f.date,    o2: f.odometer,
+      liters: f.liters + partialLiters, km, consumption,
+    });
   }
   return segments;
 }
@@ -155,6 +169,156 @@ export function calcWeightedConsumption(
   const totalKm     = segments.reduce((s, x) => s + x.km, 0);
   if (totalKm <= 0) return null;
   return parseFloat(((totalLiters / totalKm) * 100).toFixed(2));
+}
+
+/**
+ * Точка с известным одометром внутри сегмента (строго между o1 и o2):
+ * неполные заправки и расходы с указанным пробегом. Используется для
+ * линейной интерполяции одометра по датам при разбивке сегмента по месяцам
+ * (splitSegmentByMonth) — чем больше таких точек, тем точнее оценка пробега
+ * внутри месяца, не только по двум концам сегмента.
+ */
+export async function getOdometerWaypointsBetween(
+  carId: number, fromOdo: number, toOdo: number,
+): Promise<{ date: string; odometer: number }[]> {
+  const db = await openDatabase();
+  const partials = await db.getAllAsync<{ date: string; odometer: number }>(
+    `SELECT date, odometer FROM fuel_entry
+      WHERE car_id = ? AND is_full_tank = 0 AND odometer > ? AND odometer < ?;`,
+    [carId, fromOdo, toOdo]
+  );
+  const expensesWithOdo = await db.getAllAsync<{ date: string; odometer: number }>(
+    `SELECT date, odometer FROM expense
+      WHERE car_id = ? AND odometer IS NOT NULL AND odometer > ? AND odometer < ?;`,
+    [carId, fromOdo, toOdo]
+  );
+  return [...partials, ...expensesWithOdo].sort(
+    (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.odometer - b.odometer)
+  );
+}
+
+/** 'YYYY-MM-DD' → целое число дней от эпохи (UTC) — для линейной интерполяции по датам. */
+function dayNum(dateStr: string): number {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / 86400000;
+}
+
+/** 'YYYY-MM' следующего месяца. */
+function nextYM(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m, 1)); // m уже 1-индексный текущий месяц → день 1 следующего
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Все 'YYYY-MM' от месяца d1 до месяца d2 включительно, по возрастанию. */
+function monthsBetween(d1: string, d2: string): string[] {
+  const months: string[] = [];
+  let ym = d1.slice(0, 7);
+  const endYm = d2.slice(0, 7);
+  for (;;) {
+    months.push(ym);
+    if (ym === endYm) break;
+    ym = nextYM(ym);
+  }
+  return months;
+}
+
+/**
+ * Одометр на заданную дату — линейная интерполяция по отсортированным (по
+ * дате) точкам с известным одометром. До первой точки — одометр первой,
+ * после последней — одометр последней (внутри сегмента это не происходит:
+ * dateStr всегда между датами первой и последней точки).
+ */
+function interpOdometerAtDate(
+  points: { date: string; odometer: number }[], dateStr: string,
+): number {
+  const target = dayNum(dateStr);
+  const first = points[0];
+  const last  = points[points.length - 1];
+  if (target <= dayNum(first.date)) return first.odometer;
+  if (target >= dayNum(last.date))  return last.odometer;
+  for (let i = 0; i < points.length - 1; i++) {
+    const d1 = dayNum(points[i].date);
+    const d2 = dayNum(points[i + 1].date);
+    if (target >= d1 && target <= d2) {
+      if (d2 === d1) return points[i].odometer;
+      const frac = (target - d1) / (d2 - d1);
+      return points[i].odometer + frac * (points[i + 1].odometer - points[i].odometer);
+    }
+  }
+  return last.odometer;
+}
+
+/** Доля сегмента, пришедшаяся на один календарный месяц. */
+export type MonthFuelPortion = { ym: string; km: number; liters: number };
+
+/**
+ * Разложить сегмент (между двумя полными баками) по календарным месяцам,
+ * которые он пересекает. Пробег месяца оценивается линейной интерполяцией
+ * одометра по датам между o1 и o2, с учётом промежуточных точек (waypoints —
+ * неполные заправки и расходы с пробегом внутри сегмента, если есть — иначе
+ * интерполяция идёт прямо между o1 и o2). Литры делятся в той же пропорции,
+ * что и километры — поэтому сумма liters/km по всем возвращённым месяцам
+ * всегда равна segment.liters/segment.km (с точностью до округления).
+ *
+ * Месяц без пробега в сегменте (km <= 0, например вырожденный случай
+ * d1 === d2) в результат не попадает.
+ */
+export function splitSegmentByMonth(
+  segment: Pick<FuelSegment, 'd1' | 'o1' | 'd2' | 'o2' | 'liters' | 'km'>,
+  waypoints: { date: string; odometer: number }[] = [],
+): MonthFuelPortion[] {
+  const { d1, o1, d2, o2, liters, km } = segment;
+  if (km <= 0) return [];
+
+  const points = [{ date: d1, odometer: o1 }, ...waypoints, { date: d2, odometer: o2 }].sort(
+    (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.odometer - b.odometer)
+  );
+
+  const portions: MonthFuelPortion[] = [];
+  for (const ym of monthsBetween(d1, d2)) {
+    const monthStart = ym === d1.slice(0, 7) ? d1 : `${ym}-01`;
+    const monthEnd    = ym === d2.slice(0, 7) ? d2 : `${nextYM(ym)}-01`;
+    const odoStart = interpOdometerAtDate(points, monthStart);
+    const odoEnd   = interpOdometerAtDate(points, monthEnd);
+    const monthKm = Math.max(odoEnd - odoStart, 0);
+    if (monthKm <= 0) continue;
+    portions.push({ ym, km: monthKm, liters: (monthKm / km) * liters });
+  }
+  return portions;
+}
+
+/**
+ * Расход по месяцам (вкладка «Расход л/100км», ТЗ 4.5): в отличие от
+ * старой привязки целого сегмента к месяцу закрывающей заправки (из-за чего
+ * длинный сегмент целиком попадал в один месяц, а месяцы без полной
+ * заправки оставались пустыми), каждый сегмент раскладывается по месяцам
+ * пропорционально пробегу (splitSegmentByMonth), после чего расход месяца =
+ * сумма его литров ÷ сумма его км × 100 (calcWeightedConsumption).
+ *
+ * Месяц без km в результате отсутствует — вызывающий код показывает «—».
+ * Сумма liters/km по всем месяцам равна сумме liters/km по всем сегментам
+ * (см. scripts/verify_fuel_consumption.mjs) — среднее «за всё время» и
+ * карточка на главной (calcWeightedConsumption(segments) без разбивки по
+ * месяцам) не меняются и могут не совпадать с простым усреднением
+ * помесячных значений (это ожидаемо и математически верно).
+ */
+export async function getMonthlyFuelConsumption(
+  carId = 1,
+): Promise<Map<string, { liters: number; km: number }>> {
+  const segments = await getFuelSegments(carId);
+  const result = new Map<string, { liters: number; km: number }>();
+
+  for (const seg of segments) {
+    const waypoints = await getOdometerWaypointsBetween(carId, seg.o1, seg.o2);
+    for (const { ym, km, liters } of splitSegmentByMonth(seg, waypoints)) {
+      const acc = result.get(ym) ?? { liters: 0, km: 0 };
+      acc.liters += liters;
+      acc.km += km;
+      result.set(ym, acc);
+    }
+  }
+  return result;
 }
 
 /**

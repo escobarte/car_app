@@ -15,6 +15,11 @@
  */
 
 import { DatabaseSync } from 'node:sqlite';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -44,6 +49,15 @@ function freshDb() {
       price_per_liter REAL    NOT NULL,
       is_full_tank    INTEGER NOT NULL DEFAULT 1,
       consumption     REAL
+    );
+    CREATE TABLE expense (
+      id          INTEGER PRIMARY KEY,
+      car_id      INTEGER NOT NULL,
+      category_id INTEGER NOT NULL,
+      date        TEXT    NOT NULL,
+      odometer    INTEGER,
+      amount      REAL    NOT NULL,
+      description TEXT    NOT NULL DEFAULT ''
     );
   `);
   return db;
@@ -108,7 +122,13 @@ function getFuelSegments(db, carId = 1) {
     const partialLiters = sumPartialLitersBetween(db, carId, prev.odometer, f.odometer);
     const consumption = calcConsumption(f.liters, partialLiters, km);
     if (consumption == null) continue;
-    segments.push({ fullTankId: f.id, date: f.date, liters: f.liters + partialLiters, km, consumption });
+    segments.push({
+      fullTankId: f.id,
+      date: f.date,
+      d1: prev.date, o1: prev.odometer,
+      d2: f.date,    o2: f.odometer,
+      liters: f.liters + partialLiters, km, consumption,
+    });
   }
   return segments;
 }
@@ -120,6 +140,101 @@ function calcWeightedConsumption(segments) {
   const totalKm = segments.reduce((s, x) => s + x.km, 0);
   if (totalKm <= 0) return null;
   return parseFloat(((totalLiters / totalKm) * 100).toFixed(2));
+}
+
+// ─── Зеркало новой разбивки расхода по месяцам (db/repositories/fuel.ts) ────
+
+function getOdometerWaypointsBetween(db, carId, fromOdo, toOdo) {
+  const partials = db
+    .prepare(
+      `SELECT date, odometer FROM fuel_entry
+        WHERE car_id = ? AND is_full_tank = 0 AND odometer > ? AND odometer < ?;`
+    )
+    .all(carId, fromOdo, toOdo);
+  const expensesWithOdo = db
+    .prepare(
+      `SELECT date, odometer FROM expense
+        WHERE car_id = ? AND odometer IS NOT NULL AND odometer > ? AND odometer < ?;`
+    )
+    .all(carId, fromOdo, toOdo);
+  return [...partials, ...expensesWithOdo].sort(
+    (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.odometer - b.odometer)
+  );
+}
+
+function dayNum(dateStr) {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / 86400000;
+}
+
+function nextYM(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthsBetween(d1, d2) {
+  const months = [];
+  let ym = d1.slice(0, 7);
+  const endYm = d2.slice(0, 7);
+  for (;;) {
+    months.push(ym);
+    if (ym === endYm) break;
+    ym = nextYM(ym);
+  }
+  return months;
+}
+
+function interpOdometerAtDate(points, dateStr) {
+  const target = dayNum(dateStr);
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (target <= dayNum(first.date)) return first.odometer;
+  if (target >= dayNum(last.date)) return last.odometer;
+  for (let i = 0; i < points.length - 1; i++) {
+    const d1 = dayNum(points[i].date);
+    const d2 = dayNum(points[i + 1].date);
+    if (target >= d1 && target <= d2) {
+      if (d2 === d1) return points[i].odometer;
+      const frac = (target - d1) / (d2 - d1);
+      return points[i].odometer + frac * (points[i + 1].odometer - points[i].odometer);
+    }
+  }
+  return last.odometer;
+}
+
+function splitSegmentByMonth(segment, waypoints = []) {
+  const { d1, o1, d2, o2, liters, km } = segment;
+  if (km <= 0) return [];
+  const points = [{ date: d1, odometer: o1 }, ...waypoints, { date: d2, odometer: o2 }].sort(
+    (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.odometer - b.odometer)
+  );
+  const portions = [];
+  for (const ym of monthsBetween(d1, d2)) {
+    const monthStart = ym === d1.slice(0, 7) ? d1 : `${ym}-01`;
+    const monthEnd = ym === d2.slice(0, 7) ? d2 : `${nextYM(ym)}-01`;
+    const odoStart = interpOdometerAtDate(points, monthStart);
+    const odoEnd = interpOdometerAtDate(points, monthEnd);
+    const monthKm = Math.max(odoEnd - odoStart, 0);
+    if (monthKm <= 0) continue;
+    portions.push({ ym, km: monthKm, liters: (monthKm / km) * liters });
+  }
+  return portions;
+}
+
+function getMonthlyFuelConsumption(db, carId = 1) {
+  const segments = getFuelSegments(db, carId);
+  const result = new Map();
+  for (const seg of segments) {
+    const waypoints = getOdometerWaypointsBetween(db, carId, seg.o1, seg.o2);
+    for (const { ym, km, liters } of splitSegmentByMonth(seg, waypoints)) {
+      const acc = result.get(ym) ?? { liters: 0, km: 0 };
+      acc.liters += liters;
+      acc.km += km;
+      result.set(ym, acc);
+    }
+  }
+  return result;
 }
 
 // Зеркало recalcAllFullTankConsumption(): теперь строится на getFuelSegments(),
@@ -154,6 +269,13 @@ function insertFuel(db, { carId = 1, date, odometer, liters, total_cost, is_full
 
 function getByOdo(db, odometer) {
   return db.prepare(`SELECT * FROM fuel_entry WHERE odometer = ?;`).get(odometer);
+}
+
+function insertExpense(db, { carId = 1, categoryId = 1, date, odometer = null, amount = 0 }) {
+  db.prepare(
+    `INSERT INTO expense (car_id, category_id, date, odometer, amount, description)
+     VALUES (?, ?, ?, ?, ?, '');`
+  ).run(carId, categoryId, date, odometer, amount);
 }
 
 // ─── Зеркало db/backup.ts: resolveImportedBaseOdometer ─────────────────────
@@ -418,6 +540,134 @@ section('Сценарий 6: средневзвешенный расход vs п
   check(
     'нет сегментов → calcWeightedConsumption = null',
     calcWeightedConsumption(getFuelSegments(emptyDb)) === null
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Сценарий 7 — разбивка расхода по месяцам (splitSegmentByMonth): длинный
+// сегмент без промежуточных полных баков больше НЕ попадает целиком в месяц
+// закрывающей заправки — каждый месяц получает свою долю км/литров.
+// Воспроизводит баг из задачи: полный 26.04 → полный 29.06 (~2300 км),
+// внутри — неполные заправки в мае и июне (waypoints для интерполяции).
+// ════════════════════════════════════════════════════════════════════════════
+section('Сценарий 7: расход по месяцам — доля сегмента 26.04→29.06 (без полного бака в мае)');
+{
+  const db = freshDb();
+  insertFuel(db, { date: '2026-03-27', odometer: 202753, liters: 37.04, total_cost: 370, is_full_tank: 1 });
+  insertFuel(db, { date: '2026-04-09', odometer: 203372, liters: 16.76, total_cost: 167, is_full_tank: 0 });
+  insertFuel(db, { date: '2026-04-26', odometer: 204205, liters: 45.4,  total_cost: 454, is_full_tank: 1 });
+  insertFuel(db, { date: '2026-05-17', odometer: 204879, liters: 12.97, total_cost: 130, is_full_tank: 0 });
+  insertFuel(db, { date: '2026-06-12', odometer: 205669, liters: 17.41, total_cost: 174, is_full_tank: 0 });
+  insertFuel(db, { date: '2026-06-29', odometer: 206520, liters: 42.73, total_cost: 427, is_full_tank: 1 });
+
+  const segments = getFuelSegments(db);
+  const longSeg = segments.find((s) => s.o2 === 206520);
+  check(
+    'сегмент 26.04→29.06 найден, km=2315',
+    !!longSeg && longSeg.km === 2315,
+    `получено ${longSeg?.km}`
+  );
+
+  const waypoints = getOdometerWaypointsBetween(db, 1, longSeg.o1, longSeg.o2);
+  const portions = splitSegmentByMonth(longSeg, waypoints);
+  const may = portions.find((p) => p.ym === '2026-05');
+  const jun = portions.find((p) => p.ym === '2026-06');
+
+  check(
+    'май (раньше пустой — не было полного бака) получает свою долю км > 0',
+    !!may && may.km > 0,
+    `получено ${JSON.stringify(may)}`
+  );
+  check(
+    'апрель получает долю от ЭТОГО сегмента (26.04→01.05) + долю от предыдущего (27.03→26.04)',
+    portions.some((p) => p.ym === '2026-04'),
+  );
+  check(
+    'июнь больше не получает ВЕСЬ сегмент — его доля < km всего сегмента',
+    !!jun && jun.km < longSeg.km,
+    `получено jun.km=${jun?.km}, segment.km=${longSeg.km}`
+  );
+
+  const sumKm = portions.reduce((s, p) => s + p.km, 0);
+  const sumLiters = portions.reduce((s, p) => s + p.liters, 0);
+  check(
+    'сумма км долей по месяцам = km сегмента (2315)',
+    Math.abs(sumKm - longSeg.km) < 1e-9,
+    `получено ${sumKm}`
+  );
+  check(
+    'сумма литров долей по месяцам = liters сегмента',
+    Math.abs(sumLiters - longSeg.liters) < 1e-9,
+    `получено ${sumLiters}`
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Сценарий 8 — регрессия на РЕАЛЬНЫХ данных car_backup_Latest_v4.json
+// (scripts/fixtures/): май должен получить значение расхода (раньше был
+// пустым), сумма литров/км по месяцам = сумма по сегментам, средний расход
+// «за всё время» не изменился (6.90 — он считается по целым сегментам,
+// разбивка по месяцам его не трогает).
+// ════════════════════════════════════════════════════════════════════════════
+section('Сценарий 8: регрессия на car_backup_Latest_v4.json');
+{
+  const backup = JSON.parse(
+    readFileSync(join(__dirname, 'fixtures', 'car_backup_Latest_v4.json'), 'utf8')
+  );
+  const db = freshDb();
+  const carId = backup.car?.id ?? 1;
+
+  // Вставляем как есть, без пересчёта на каждой строке (это бэкап уже
+  // консистентных данных) — пересчёт делаем один раз в конце, как делает
+  // импорт бэкапа в приложении.
+  const insertRaw = db.prepare(
+    `INSERT INTO fuel_entry (id, car_id, date, odometer, liters, total_cost, price_per_liter, is_full_tank, consumption)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL);`
+  );
+  for (const f of backup.fuelEntries) {
+    const price = parseFloat((f.total_cost / f.liters).toFixed(2));
+    insertRaw.run(f.id, carId, f.date, f.odometer, f.liters, f.total_cost, price, f.is_full_tank);
+  }
+  for (const e of backup.expenses) {
+    insertExpense(db, { carId, categoryId: e.category_id, date: e.date, odometer: e.odometer, amount: e.amount });
+  }
+  recalcAllFullTankConsumption(db, carId);
+
+  const segments = getFuelSegments(db, carId);
+  const monthly = getMonthlyFuelConsumption(db, carId);
+  const may = monthly.get('2026-05');
+
+  check(
+    'май 2026 получает значение расхода (раньше был пустым — весь отрезок 26.04–29.06 уходил в июнь)',
+    !!may && may.km > 0,
+    `получено ${JSON.stringify(may)}`
+  );
+  if (may) {
+    const mayCons = parseFloat(((may.liters / may.km) * 100).toFixed(2));
+    console.log(`  →     май 2026: км=${may.km.toFixed(1)}, л=${may.liters.toFixed(2)}, расход=${mayCons}`);
+  }
+
+  const sumKmByMonth = [...monthly.values()].reduce((s, v) => s + v.km, 0);
+  const sumLitersByMonth = [...monthly.values()].reduce((s, v) => s + v.liters, 0);
+  const sumKmSegments = segments.reduce((s, x) => s + x.km, 0);
+  const sumLitersSegments = segments.reduce((s, x) => s + x.liters, 0);
+
+  check(
+    'сумма км по месяцам = сумма км по сегментам',
+    Math.abs(sumKmByMonth - sumKmSegments) < 1e-6,
+    `по месяцам=${sumKmByMonth}, по сегментам=${sumKmSegments}`
+  );
+  check(
+    'сумма литров по месяцам = сумма литров по сегментам',
+    Math.abs(sumLitersByMonth - sumLitersSegments) < 1e-6,
+    `по месяцам=${sumLitersByMonth}, по сегментам=${sumLitersSegments}`
+  );
+
+  const allTimeAvg = calcWeightedConsumption(segments);
+  check(
+    'регрессия: средний расход «за всё время» не изменился — 6.90',
+    allTimeAvg === 6.9,
+    `получено ${allTimeAvg}`
   );
 }
 

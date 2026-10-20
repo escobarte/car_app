@@ -94,6 +94,32 @@ function monthFull(ym: string, locale: string): string {
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
+/** Сокращение месяца строчными буквами (ru) — для подписи периода в середине
+ *  фразы («за период май–окт 2026»): monthAbbr() даёт заглавную (для подписей
+ *  под графиком), в середине русского предложения это выглядит чужеродно. */
+function monthAbbrLower(ym: string, locale: string): string {
+  const abbr = monthAbbr(ym, locale);
+  return locale.startsWith('ru') ? abbr.toLowerCase() : abbr;
+}
+
+/**
+ * Диапазон месяцев периода для подписи под «Средним расходом»: «май–окт
+ * 2026» в пределах одного года, «дек 2025 – май 2026» на стыке годов, через
+ * локаль (monthAbbrLower → Intl.toLocaleDateString). Один месяц — без тире.
+ */
+function monthRangeLabel(months: string[], locale: string): string {
+  if (months.length === 0) return '';
+  const first = months[0];
+  const last  = months[months.length - 1];
+  const firstYear = first.slice(0, 4);
+  const lastYear  = last.slice(0, 4);
+  if (first === last) return `${monthAbbrLower(first, locale)} ${firstYear}`;
+  if (firstYear === lastYear) {
+    return `${monthAbbrLower(first, locale)}–${monthAbbrLower(last, locale)} ${lastYear}`;
+  }
+  return `${monthAbbrLower(first, locale)} ${firstYear} – ${monthAbbrLower(last, locale)} ${lastYear}`;
+}
+
 // Русские месяцы в дательном падеже — для строки тренда «к марту».
 const RU_MONTHS_DATIVE = [
   'январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню',
@@ -157,17 +183,22 @@ function aggMaxOdo(fuel: FuelEntry[], months: string[]): Record<string, number> 
   return r;
 }
 
-// Средневзвешенный расход за месяц: сумма литров сегментов этого месяца ÷
-// сумма их км × 100 (fuelRepo.calcWeightedConsumption) — не простое среднее
-// по заправкам, короткий сегмент-выброс не весит столько же, сколько длинный.
-// Сегмент относится к месяцу по дате закрывающего его полного бака (как и
-// сам consumption).
-function aggConsumption(segments: fuelRepo.FuelSegment[], months: string[]): Record<string, number> {
+// Средневзвешенный расход за месяц: сумма литров ÷ сумма км × 100, где литры
+// и км — не целого сегмента (как раньше, из-за чего длинный сегмент целиком
+// попадал в месяц закрывающей заправки, а месяцы без полной заправки
+// оставались пустыми), а ДОЛИ сегментов, пришедшиеся на этот месяц
+// (fuelRepo.getMonthlyFuelConsumption — пропорционально пробегу внутри
+// сегмента, см. fuelRepo.splitSegmentByMonth). Месяц без km в карте (нет
+// закрытого отрезка между полными баками) остаётся 0 → «—» в UI.
+function aggConsumption(
+  monthly: Map<string, { liters: number; km: number }>,
+  months: string[],
+): Record<string, number> {
   const r = Object.fromEntries(months.map(m => [m, 0]));
   for (const ym of months) {
-    const monthSegments = segments.filter(s => s.date.startsWith(ym));
-    const w = fuelRepo.calcWeightedConsumption(monthSegments);
-    if (w != null) r[ym] = w;
+    const m = monthly.get(ym);
+    if (!m || m.km <= 0) continue;
+    r[ym] = parseFloat(((m.liters / m.km) * 100).toFixed(2));
   }
   return r;
 }
@@ -247,6 +278,10 @@ export default function StatsScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [allFuel,      setAllFuel]      = useState<FuelEntry[]>([]);
   const [allSegments,  setAllSegments]  = useState<fuelRepo.FuelSegment[]>([]);
+  // Расход по месяцам (доли сегментов, см. fuelRepo.getMonthlyFuelConsumption) —
+  // отдельно от allSegments, который используется для среднего «за всё время»/
+  // карточки на главной (эти не меняются, считаются по целым сегментам).
+  const [monthlyCons,  setMonthlyCons]  = useState<Map<string, { liters: number; km: number }>>(new Map());
   const [allExpenses,  setAllExpenses]  = useState<Expense[]>([]);
   // Все месяцы, где есть хоть одна запись (заправка или расход) — по возрастанию.
   const [monthsWithData, setMonthsWithData] = useState<string[]>([]);
@@ -279,18 +314,20 @@ export default function StatsScreen() {
       let active = true;
       (async () => {
         setLoading(true);
-        const [carData, fuel, expenses, cats, segments] = await Promise.all([
+        const [carData, fuel, expenses, cats, segments, monthly] = await Promise.all([
           carRepo.getCar(),
           fuelRepo.getAllFuelEntries(),
           expenseRepo.getAllExpenses(),
           categoryRepo.getAllCategories(),
           fuelRepo.getFuelSegments(),
+          fuelRepo.getMonthlyFuelConsumption(),
         ]);
         if (!active) return;
         setCar(carData);
         setCategories(cats);
         setAllFuel(fuel);
         setAllSegments(segments);
+        setMonthlyCons(monthly);
         setAllExpenses(expenses);
         const monthSet = new Set<string>();
         fuel.forEach(f => monthSet.add(f.date.slice(0, 7)));
@@ -305,7 +342,7 @@ export default function StatsScreen() {
   // ── Агрегаты (пересчитываются при смене вкладки окна/режима, не при фетче) ──
   const fuelMap   = useMemo(() => aggFuel(allFuel, MONTHS),        [allFuel, MONTHS]);
   const expMap    = useMemo(() => aggExpenses(allExpenses, MONTHS), [allExpenses, MONTHS]);
-  const consMap   = useMemo(() => aggConsumption(allSegments, MONTHS), [allSegments, MONTHS]);
+  const consMap   = useMemo(() => aggConsumption(monthlyCons, MONTHS), [monthlyCons, MONTHS]);
   const maxOdoMap = useMemo(() => aggMaxOdo(allFuel, MONTHS),      [allFuel, MONTHS]);
   const consStats = useMemo(
     () => buildConsStats(allFuel, allSegments, MONTHS),
@@ -576,6 +613,14 @@ export default function StatsScreen() {
     return diff > 0 ? diff : null;
   })();
 
+  // Подсказка для пустого месяца на вкладке «Расход л/100»: нет закрытого
+  // отрезка между полными баками (например, последний отрезок ещё не
+  // закрыт следующей полной заправкой) — поэтому расход месяца не посчитан.
+  // Не показываем, если сегментов вообще нет (пустая история — там нет
+  // смысла уточнять «какого именно» месяца не хватает).
+  const showNoSegmentHint = activeTab === 'consumption' && !allTime
+    && selectedValue <= 0 && allSegments.length > 0;
+
   // ── Загрузка ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -695,6 +740,11 @@ export default function StatsScreen() {
               {t('stats.kmPerMonth', { km: monthKm.toLocaleString() })}
             </Text>
           )}
+          {showNoSegmentHint && (
+            <Text style={s.monthKm} numberOfLines={2}>
+              {t('stats.noClosedSegmentHint')}
+            </Text>
+          )}
         </View>
       </View>
 
@@ -709,7 +759,10 @@ export default function StatsScreen() {
             // В allTime месяцев может быть сколько угодно — столбики фиксированной
             // ширины внутри горизонтального скролла. Иначе — ровно 6, flex-колонки.
             const bars = chartData.map(({ ym, value }) => {
-              const isSelected = ym === selectedYM;
+              // В «За всё время» тап по столбцу не выбирает месяц (там нет
+              // смысла — заголовок и сумма уже показывают весь период), поэтому
+              // и подсветку выбранного месяца в этом режиме не показываем.
+              const isSelected = !allTime && ym === selectedYM;
               // Выбранный пустой месяц показываем маленьким «нубом», чтобы
               // подсветка была видна; невыбранный пустой месяц — без бара.
               const barH = value > 0
@@ -722,7 +775,9 @@ export default function StatsScreen() {
                   style={allTime ? [s.barWrapper, s.barWrapperFixed] : s.barWrapper}
                   activeOpacity={0.8}
                   onPress={() => setSelectedYM(ym)}
+                  disabled={allTime}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected, disabled: allTime }}
                   accessibilityLabel={`${monthFull(ym, locale)}`}
                 >
                   {/* Подпись значения над столбиком */}
@@ -761,11 +816,15 @@ export default function StatsScreen() {
                 style={allTime ? [s.labelCell, s.labelCellFixed] : s.labelCell}
                 activeOpacity={0.8}
                 onPress={() => setSelectedYM(ym)}
+                disabled={allTime}
+                accessibilityRole="button"
+                accessibilityState={{ selected: !allTime && ym === selectedYM, disabled: allTime }}
+                accessibilityLabel={`${monthFull(ym, locale)}`}
               >
                 <Text
                   style={[
                     s.monthLabel,
-                    ym === selectedYM && { color: colors.accent },
+                    !allTime && ym === selectedYM && { color: colors.accent },
                   ]}
                   numberOfLines={1}
                 >
@@ -859,6 +918,14 @@ export default function StatsScreen() {
             <Text style={s.metricLabel}>{t('stats.metricAvg')}</Text>
             <Text style={s.metricValue} numberOfLines={1}>
               {consStats.avg > 0 ? `${consStats.avg.toFixed(1)} ${t('stats.lPer100')}` : '—'}
+            </Text>
+            {/* Уточняет период этого числа — чтобы не путать со средним «за
+                всё время» на главном экране (там считается только по всей
+                истории, см. dashboard.per100kmAllTime). */}
+            <Text style={s.metricSub} numberOfLines={1}>
+              {allTime
+                ? t('stats.periodAllTime')
+                : t('stats.periodLabel', { range: monthRangeLabel(MONTHS, locale) })}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-distance')}>
@@ -1168,6 +1235,9 @@ function makeStyles(th: AppTheme, topInset: number) {
       fontSize:   typography.cardValue.fontSize,
       fontWeight: typography.cardValue.fontWeight,
     },
+    // Подпись периода под значением «Средний расход» (cons-avg) — «за период
+    // май–окт 2026» / «за всё время».
+    metricSub: { color: colors.textMuted, ...typography.labelSmall, marginTop: 4 },
 
     // ── Карточка графика ───────────────────────────────────────────────────────
     chartCard: {
@@ -1183,13 +1253,18 @@ function makeStyles(th: AppTheme, topInset: number) {
     },
     noDataText: { color: colors.textWeak, ...typography.cardText },
 
-    // Область столбиков: flex-row, bars выровнены к низу
+    // Область столбиков: flex-row. alignItems: 'stretch' (не 'flex-end') —
+    // каждая колонка-TouchableOpacity растягивается на всю высоту графика, а
+    // не только на высоту самого бара, иначе по низким/пустым столбцам почти
+    // невозможно попасть пальцем. Сам бар внутри колонки всё равно прижат к
+    // низу через justifyContent: 'flex-end' у barWrapper — визуально не меняется.
     barsArea: {
       flexDirection: 'row',
-      alignItems:    'flex-end',
+      alignItems:    'stretch',
       gap:           4,
     },
-    // Каждый столбик: позиционирует бар и подпись
+    // Каждый столбик: позиционирует бар и подпись, растянут на всю высоту
+    // barsArea (см. комментарий выше) — область нажатия на весь столбец.
     barWrapper: {
       flex:           1,
       alignItems:     'center',

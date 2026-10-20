@@ -1,0 +1,665 @@
+{
+  "version": 1,
+  "exportDate": "2026-07-22T12:53:33.000Z",
+  "car": {
+    "id": 1,
+    "name": "Моя машина",
+    "current_odometer": 211294,
+    "fuel_unit": "литр",
+    "currency": "MDL"
+  },
+  "settings": {
+    "id": 1,
+    "language": "en",
+    "theme": "dark",
+    "notifications_enabled": 1
+  },
+  "categories": [
+    {
+      "id": 1,
+      "key": "documents",
+      "name": "Документы",
+      "icon": "file-text",
+      "is_builtin": 1
+    },
+    {
+      "id": 2,
+      "key": "chemistry",
+      "name": "Химия",
+      "icon": "spray",
+      "is_builtin": 1
+    },
+    {
+      "id": 3,
+      "key": "tuning",
+      "name": "Тюнинг",
+      "icon": "settings-2",
+      "is_builtin": 1
+    },
+    {
+      "id": 4,
+      "key": "accessories",
+      "name": "Аксессуары",
+      "icon": "puzzle",
+      "is_builtin": 1
+    },
+    {
+      "id": 5,
+      "key": "electronics",
+      "name": "Электроника",
+      "icon": "device-speaker",
+      "is_builtin": 1
+    },
+    {
+      "id": 6,
+      "key": "service",
+      "name": "Сервис",
+      "icon": "tool",
+      "is_builtin": 1
+    },
+    {
+      "id": 7,
+      "key": "comfort",
+      "name": "Комфорт",
+      "icon": "armchair",
+      "is_builtin": 1
+    },
+    {
+      "id": 8,
+      "key": "parts",
+      "name": "Запчасти",
+      "icon": "engine",
+      "is_builtin": 1
+    },
+    {
+      "id": 9,
+      "key": "gov_inspection",
+      "name": "Гос. ТО",
+      "icon": "clipboard-check",
+      "is_builtin": 1
+    },
+    {
+      "id": 10,
+      "key": "fines",
+      "name": "Штрафы",
+      "icon": "alert-octagon",
+      "is_builtin": 1
+    },
+    {
+      "id": 11,
+      "key": "parking",
+      "name": "Парковка",
+      "icon": "parking",
+      "is_builtin": 1
+    },
+    {
+      "id": 12,
+      "key": "tires",
+      "name": "Шины",
+      "icon": "wheel",
+      "is_builtin": 1
+    }
+  ],
+  "reminders": [
+    {
+      "id": 1,
+      "car_id": 1,
+      "title": "Замена масла",
+      "type": "mileage",
+      "interval_km": 8000,
+      "interval_days": null,
+      "last_odometer": 0,
+      "last_date": "2026-07-22",
+      "warn_before": 500
+    },
+    {
+      "id": 2,
+      "car_id": 1,
+      "title": "Гос. ТО",
+      "type": "time",
+      "interval_km": null,
+      "interval_days": 365,
+      "last_odometer": 0,
+      "last_date": "2026-07-22",
+      "warn_before": 25
+    },
+    {
+      "id": 3,
+      "car_id": 1,
+      "title": "Мойка",
+      "type": "time",
+      "interval_km": null,
+      "interval_days": 14,
+      "last_odometer": 0,
+      "last_date": "2026-07-22",
+      "warn_before": 3
+    },
+    {
+      "id": 4,
+      "car_id": 1,
+      "title": "Дворники",
+      "type": "time",
+      "interval_km": null,
+      "interval_days": 365,
+      "last_odometer": 0,
+      "last_date": "2026-07-22",
+      "warn_before": 30
+    }
+  ],
+  "fuelEntries": [
+    {
+      "id": 1,
+      "car_id": 1,
+      "date": "2025-12-04",
+      "odometer": 198814,
+      "liters": 21.29,
+      "total_cost": 476.68,
+      "price_per_liter": 22.39,
+      "is_full_tank": 1,
+      "consumption": null
+    },
+    {
+      "id": 2,
+      "car_id": 1,
+      "date": "2025-12-25",
+      "odometer": 199438,
+      "liters": 18.3,
+      "total_cost": 402.6,
+      "price_per_liter": 22.0,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 3,
+      "car_id": 1,
+      "date": "2026-01-03",
+      "odometer": 199795,
+      "liters": 32.04,
+      "total_cost": 703,
+      "price_per_liter": 21.94,
+      "is_full_tank": 1,
+      "consumption": 5.13
+    },
+    {
+      "id": 4,
+      "car_id": 1,
+      "date": "2026-01-10",
+      "odometer": 200039,
+      "liters": 23.36,
+      "total_cost": 516.72,
+      "price_per_liter": 22.12,
+      "is_full_tank": 1,
+      "consumption": 9.57
+    },
+    {
+      "id": 5,
+      "car_id": 1,
+      "date": "2026-01-16",
+      "odometer": 200488,
+      "liters": 36,
+      "total_cost": 814,
+      "price_per_liter": 22.61,
+      "is_full_tank": 1,
+      "consumption": 8.02
+    },
+    {
+      "id": 6,
+      "car_id": 1,
+      "date": "2026-01-24",
+      "odometer": 200680,
+      "liters": 22.27,
+      "total_cost": 511,
+      "price_per_liter": 22.95,
+      "is_full_tank": 1,
+      "consumption": 11.6
+    },
+    {
+      "id": 7,
+      "car_id": 1,
+      "date": "2026-02-07",
+      "odometer": 200979,
+      "liters": 35.92,
+      "total_cost": 831.18,
+      "price_per_liter": 23.14,
+      "is_full_tank": 1,
+      "consumption": 12.01
+    },
+    {
+      "id": 8,
+      "car_id": 1,
+      "date": "2026-02-21",
+      "odometer": 201323,
+      "liters": 38.04,
+      "total_cost": 890.13,
+      "price_per_liter": 23.4,
+      "is_full_tank": 1,
+      "consumption": 11.06
+    },
+    {
+      "id": 9,
+      "car_id": 1,
+      "date": "2026-03-04",
+      "odometer": 201707,
+      "liters": 33.62,
+      "total_cost": 805.87,
+      "price_per_liter": 23.97,
+      "is_full_tank": 1,
+      "consumption": 8.76
+    },
+    {
+      "id": 10,
+      "car_id": 1,
+      "date": "2026-03-13",
+      "odometer": 202240,
+      "liters": 35.52,
+      "total_cost": 916.41,
+      "price_per_liter": 25.8,
+      "is_full_tank": 1,
+      "consumption": 6.66
+    },
+    {
+      "id": 11,
+      "car_id": 1,
+      "date": "2026-03-27",
+      "odometer": 202753,
+      "liters": 37.04,
+      "total_cost": 1090,
+      "price_per_liter": 29.43,
+      "is_full_tank": 1,
+      "consumption": 7.22
+    },
+    {
+      "id": 12,
+      "car_id": 1,
+      "date": "2026-04-09",
+      "odometer": 203372,
+      "liters": 16.76,
+      "total_cost": 500,
+      "price_per_liter": 29.83,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 13,
+      "car_id": 1,
+      "date": "2026-04-13",
+      "odometer": 203657,
+      "liters": 16.77,
+      "total_cost": 500,
+      "price_per_liter": 29.82,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 14,
+      "car_id": 1,
+      "date": "2026-04-20",
+      "odometer": 203905,
+      "liters": 6.84,
+      "total_cost": 200,
+      "price_per_liter": 29.24,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 15,
+      "car_id": 1,
+      "date": "2026-04-24",
+      "odometer": 204088,
+      "liters": 6.88,
+      "total_cost": 200,
+      "price_per_liter": 29.07,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 16,
+      "car_id": 1,
+      "date": "2026-04-26",
+      "odometer": 204205,
+      "liters": 45.4,
+      "total_cost": 1324,
+      "price_per_liter": 29.16,
+      "is_full_tank": 1,
+      "consumption": 6.38
+    },
+    {
+      "id": 17,
+      "car_id": 1,
+      "date": "2026-05-17",
+      "odometer": 204879,
+      "liters": 12.97,
+      "total_cost": 400,
+      "price_per_liter": 30.84,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 18,
+      "car_id": 1,
+      "date": "2026-05-21",
+      "odometer": 205071,
+      "liters": 6.43,
+      "total_cost": 200,
+      "price_per_liter": 31.1,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 19,
+      "car_id": 1,
+      "date": "2026-05-30",
+      "odometer": 205367,
+      "liters": 16.3,
+      "total_cost": 500,
+      "price_per_liter": 30.67,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 20,
+      "car_id": 1,
+      "date": "2026-06-12",
+      "odometer": 205669,
+      "liters": 17.41,
+      "total_cost": 500,
+      "price_per_liter": 28.72,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 21,
+      "car_id": 1,
+      "date": "2026-06-14",
+      "odometer": 205906,
+      "liters": 27.86,
+      "total_cost": 800,
+      "price_per_liter": 28.72,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 22,
+      "car_id": 1,
+      "date": "2026-06-26",
+      "odometer": 206358,
+      "liters": 14.52,
+      "total_cost": 400,
+      "price_per_liter": 27.55,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 23,
+      "car_id": 1,
+      "date": "2026-06-29",
+      "odometer": 206520,
+      "liters": 42.73,
+      "total_cost": 1173,
+      "price_per_liter": 27.45,
+      "is_full_tank": 1,
+      "consumption": 5.97
+    },
+    {
+      "id": 24,
+      "car_id": 1,
+      "date": "2026-07-21",
+      "odometer": 207165,
+      "liters": 17.05,
+      "total_cost": 500,
+      "price_per_liter": 29.33,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 25,
+      "car_id": 1,
+      "date": "2026-07-25",
+      "odometer": 207319,
+      "liters": 37.67,
+      "total_cost": 1136.13,
+      "price_per_liter": 30.16,
+      "is_full_tank": 1,
+      "consumption": 6.85
+    },
+    {
+      "id": 26,
+      "car_id": 1,
+      "date": "2026-08-10",
+      "odometer": 207893,
+      "liters": 9.98,
+      "total_cost": 300,
+      "price_per_liter": 30.06,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 27,
+      "car_id": 1,
+      "date": "2026-08-23",
+      "odometer": 208177,
+      "liters": 6.49,
+      "total_cost": 200,
+      "price_per_liter": 30.82,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 28,
+      "car_id": 1,
+      "date": "2026-08-28",
+      "odometer": 208300,
+      "liters": 45.95,
+      "total_cost": 1429,
+      "price_per_liter": 31.1,
+      "is_full_tank": 1,
+      "consumption": 6.36
+    },
+    {
+      "id": 29,
+      "car_id": 1,
+      "date": "2026-09-11",
+      "odometer": 208904,
+      "liters": 21.12,
+      "total_cost": 700,
+      "price_per_liter": 33.14,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 30,
+      "car_id": 1,
+      "date": "2026-09-20",
+      "odometer": 209258,
+      "liters": 35.51,
+      "total_cost": 1200,
+      "price_per_liter": 33.79,
+      "is_full_tank": 1,
+      "consumption": 5.91
+    },
+    {
+      "id": 31,
+      "car_id": 1,
+      "date": "2026-09-21",
+      "odometer": 209466,
+      "liters": 23.67,
+      "total_cost": 800,
+      "price_per_liter": 33.8,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 32,
+      "car_id": 1,
+      "date": "2026-09-23",
+      "odometer": 209831,
+      "liters": 24.34,
+      "total_cost": 932,
+      "price_per_liter": 38.29,
+      "is_full_tank": 0,
+      "consumption": null
+    },
+    {
+      "id": 33,
+      "car_id": 1,
+      "date": "2026-09-25",
+      "odometer": 210299,
+      "liters": 35,
+      "total_cost": 1349,
+      "price_per_liter": 38.54,
+      "is_full_tank": 1,
+      "consumption": 7.97
+    },
+    {
+      "id": 34,
+      "car_id": 1,
+      "date": "2026-10-02",
+      "odometer": 210890,
+      "liters": 33.47,
+      "total_cost": 1146,
+      "price_per_liter": 34.24,
+      "is_full_tank": 1,
+      "consumption": 5.66
+    },
+    {
+      "id": 35,
+      "car_id": 1,
+      "date": "2026-10-08",
+      "odometer": 211294,
+      "liters": 24.9,
+      "total_cost": 850,
+      "price_per_liter": 34.14,
+      "is_full_tank": 0,
+      "consumption": null
+    }
+  ],
+  "expenses": [
+    {
+      "id": 1,
+      "car_id": 1,
+      "category_id": 1,
+      "date": "2025-12-04",
+      "odometer": 198814,
+      "amount": 1140,
+      "description": "Переоформление"
+    },
+    {
+      "id": 2,
+      "car_id": 1,
+      "category_id": 1,
+      "date": "2025-12-05",
+      "odometer": 198900,
+      "amount": 176,
+      "description": "Страховка"
+    },
+    {
+      "id": 3,
+      "car_id": 1,
+      "category_id": 2,
+      "date": "2025-12-09",
+      "odometer": 198930,
+      "amount": 315,
+      "description": "Glass Cleaner"
+    },
+    {
+      "id": 4,
+      "car_id": 1,
+      "category_id": 3,
+      "date": "2025-12-13",
+      "odometer": 199015,
+      "amount": 900,
+      "description": "Перепрошивка"
+    },
+    {
+      "id": 5,
+      "car_id": 1,
+      "category_id": 4,
+      "date": "2025-12-13",
+      "odometer": 199015,
+      "amount": 300,
+      "description": "Xiaomi Parking"
+    },
+    {
+      "id": 6,
+      "car_id": 1,
+      "category_id": 5,
+      "date": "2025-12-13",
+      "odometer": 199015,
+      "amount": 685,
+      "description": "Rear Camera"
+    },
+    {
+      "id": 7,
+      "car_id": 1,
+      "category_id": 6,
+      "date": "2025-12-16",
+      "odometer": 199163,
+      "amount": 350,
+      "description": "ТО Ходовая"
+    },
+    {
+      "id": 8,
+      "car_id": 1,
+      "category_id": 7,
+      "date": "2026-01-06",
+      "odometer": 199750,
+      "amount": 395,
+      "description": "Подставка под кресло"
+    },
+    {
+      "id": 9,
+      "car_id": 1,
+      "category_id": 5,
+      "date": "2026-01-11",
+      "odometer": 200211,
+      "amount": 1400,
+      "description": "Камера + регистратор"
+    },
+    {
+      "id": 10,
+      "car_id": 1,
+      "category_id": 8,
+      "date": "2026-01-11",
+      "odometer": 200211,
+      "amount": 35,
+      "description": "Лампа бардачка"
+    },
+    {
+      "id": 11,
+      "car_id": 1,
+      "category_id": 9,
+      "date": "2026-03-10",
+      "odometer": 202007,
+      "amount": 3700,
+      "description": "ТО+Стра+Дорога"
+    },
+    {
+      "id": 12,
+      "car_id": 1,
+      "category_id": 6,
+      "date": "2026-03-21",
+      "odometer": 202428,
+      "amount": 300,
+      "description": "Ремонт Скола"
+    },
+    {
+      "id": 13,
+      "car_id": 1,
+      "category_id": 6,
+      "date": "2026-03-21",
+      "odometer": 202428,
+      "amount": 300,
+      "description": "Дворники (АвтоВаЗ)"
+    },
+    {
+      "id": 14,
+      "car_id": 1,
+      "category_id": 6,
+      "date": "2026-03-21",
+      "odometer": 202428,
+      "amount": 300,
+      "description": "Развал Схождения"
+    }
+  ],
+  "serviceRecords": []
+}

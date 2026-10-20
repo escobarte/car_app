@@ -451,7 +451,7 @@ export default function DashboardScreen() {
             {avgCons != null ? avgCons.toFixed(1) : '—'}
           </Text>
           {consReason === null ? (
-            <Text style={s.statSub}>{t('dashboard.per100km')}</Text>
+            <Text style={s.statSub}>{t('dashboard.per100kmAllTime')}</Text>
           ) : (
             <Text style={s.statHint}>
               {consReason === 'noFullTank'
