@@ -395,6 +395,14 @@ fuelRepo.getFuelEntriesByMonth(ym)`). Деталка карточки (`priceDet
 
 ## 6. Регламенты (reminders)
 
+**Вкладка в таб-баре называется «Напоминания»/«Reminders»** (`nav.service` в
+i18n), иконка — колокольчик `notifications-outline` (`app/(tabs)/_layout.tsx`).
+Маршрут и имя файла (`app/(tabs)/service.tsx`) не переименовывались — меняется
+только видимый текст/иконка, чтобы не трогать навигацию. Заголовок самого
+экрана (`service.title`) переименован туда же. Builtin-категория расходов
+`category.key = 'service'` («Сервис»/«Service», `db/database.ts`) — отдельная
+сущность, её название НЕ менялось.
+
 ### Статус
 
 **Функция:** `calcReminderRow()`, `utils/reminders.ts:26-50`.

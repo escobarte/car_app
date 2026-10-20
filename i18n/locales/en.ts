@@ -30,7 +30,7 @@ const en: TranslationKeys = {
     home:    'Home',
     history: 'History',
     add:     '+',
-    service: 'Service',
+    service: 'Reminders',
     stats:   'Stats',
   },
 
@@ -105,7 +105,7 @@ const en: TranslationKeys = {
   },
 
   service: {
-    title:          'Service',
+    title:          'Reminders',
     doneBtn:        'Done',
     addReminder:    'Add schedule',
     remainingKm:    '{{n}} km left',

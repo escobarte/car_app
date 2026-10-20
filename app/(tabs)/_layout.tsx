@@ -1,10 +1,15 @@
 /**
  * Нижняя навигация — 5 вкладок.
  *
- *  Home  |  History  |  [+]  |  Service  |  Stats
+ *  Home  |  History  |  [+]  |  Reminders  |  Stats
  *
  * Кнопка [+] приподнята, открывает Action Sheet.
  * Action Sheet → Заправка / Расход / Обслуживание.
+ *
+ * Вкладка «Reminders» живёт в файле-маршруте service.tsx (имя файла и путь
+ * не переименовывались, чтобы не трогать навигацию/ссылки) — только
+ * заголовок (t('nav.service')) и иконка (notifications-outline) сменились
+ * с «Сервис»/гаечного ключа на «Напоминания»/колокольчик.
  */
 
 import { useMemo, useRef, useState } from 'react';
@@ -263,14 +268,20 @@ export default function TabLayout() {
           }}
         />
 
-        {/* ── 4. Обслуживание ────────────────────────────────────────── */}
+        {/* ── 4. Напоминания ────────────────────────────────────────── */}
         <Tabs.Screen
           name="service"
           options={{
             title: t('nav.service'),
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="construct-outline" size={size} color={color} />
+              <Ionicons name="notifications-outline" size={size} color={color} />
             ),
+            // «Напоминания» (RU) на 1 символ длиннее «Статистика» — самой
+            // длинной из остальных подписей таб-бара (11px влезает впритык
+            // на узких экранах). Шрифт чуть меньше ТОЛЬКО для этой вкладки,
+            // чтобы не резать слово по ellipsis (Label из
+            // @react-navigation/elements всегда numberOfLines=1).
+            tabBarLabelStyle: { fontSize: 10, fontWeight: '400' },
           }}
         />
 
