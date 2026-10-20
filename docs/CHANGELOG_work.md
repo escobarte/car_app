@@ -9,6 +9,13 @@
 
 ---
 
+## 2026-10-20
+- Форма «Расход» (`app/add-expense.tsx`): снят запрет «пробег не может быть меньше текущего» — поле необязательное, но теперь задним числом можно внести старый расход (например, «Замена масла» на 202 007 км при текущих 211 294). Проверка приведена к единому правилу «пусто или целое число ≥ 0» (новый ключ `addExpense.errorOdometer`), действует одинаково при добавлении и редактировании; старое ограничение было только при добавлении. `recalcCurrentOdometer()` и так берёт MAX по всем записям — пробег ниже текущего не уменьшает одометр машины (проверено доп. сценариями при правке и удалении такой записи).
+- Ревизия всех мест с проверкой «пробег ≥ текущего»: осталось осознанно в `add-fuel.tsx` (монотонность нужна для расчёта расхода топлива, не трогал) и `settings.tsx` (правка базового пробега машины напрямую — другая семантика, не трогал). `common.errorOdometer` оставлен как есть (его использует только `settings.tsx`).
+- Новый `scripts/verify_expenses.mjs`: 5 сценариев на реальном `node:sqlite` (прошлый расход не уменьшает одометр, расход выше текущего поднимает его, правка/удаление записи с макс. пробегом пересчитывает одометр корректно, NULL-пробег не участвует в MAX). `npx tsc --noEmit` и ESLint — чисто (кроме уже существовавших предупреждений `radius`/`typography`).
+- файлы: app/add-expense.tsx, i18n/locales/ru.ts, i18n/locales/en.ts, scripts/verify_expenses.mjs (новый), docs/ТЗ_приложение_авто_финал.md, docs/how_it_works_tech.md, docs/how_it_works_simple.md
+- статус: ждёт проверки на телефоне
+
 ## 2026-10-19
 - Клавиатура больше не перекрывает поля форм: на Android экраны «Расход», «Заправка» и «Регламент» передавали `behavior: undefined` в KeyboardAvoidingView (ничего не делали), в отличие от уже рабочего MarkDoneSheet/settings.tsx (`'height'`). Причина — `edgeToEdgeEnabled: true` (app.config.js) не даёт `windowSoftInputMode="adjustResize"` (манифест, дефолт) реально ресайзить окно; это пришлось отрабатывать на стороне RN.
 - Новый общий хук `hooks/use-keyboard-aware-scroll.ts`: `KEYBOARD_AVOIDING_BEHAVIOR` (iOS `'padding'` / Android `'height'`) и `useKeyboardAwareScroll()` — автопрокрутка сфокусированного поля через встроенный в ScrollView `scrollResponderScrollNativeHandleToKeyboard` (без новых нативных зависимостей). Подключён во все формы с полями ввода: `add-expense.tsx`, `add-fuel.tsx`, `add-reminder.tsx`, `MarkDoneSheet.tsx` (+ `keyboardDismissMode="on-drag"` на экранах, где его не было).

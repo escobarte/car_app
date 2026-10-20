@@ -101,6 +101,7 @@ const en: TranslationKeys = {
     saveBtn:         'Save expense',
     errorAmount:     'Enter amount',
     errorCategory:   'Select a category',
+    errorOdometer:   'Odometer must be a whole number ≥ 0',
   },
 
   service: {

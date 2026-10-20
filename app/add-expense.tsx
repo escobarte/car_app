@@ -157,12 +157,15 @@ export default function AddExpenseScreen() {
     if (isNaN(num) || num <= 0) {
       errs.amount = t('addExpense.errorAmount');
     }
-    // Пробег необязателен, но если заполнен и меньше текущего — ошибка
+    // Пробег необязателен; если заполнен — целое число >= 0. Пробег ниже
+    // текущего одометра допустим: расход может вноситься задним числом
+    // (recalcCurrentOdometer() всё равно берёт максимум по всем записям,
+    // так что текущий одометр машины от этого не уменьшится).
     const rawOdo = odometer.trim();
-    if (rawOdo && !isEdit) {
+    if (rawOdo) {
       const odoNum = parseInt(rawOdo, 10);
-      if (isNaN(odoNum) || (currentOdo !== null && odoNum < currentOdo)) {
-        errs.odometer = t('common.errorOdometer');
+      if (isNaN(odoNum) || odoNum < 0) {
+        errs.odometer = t('addExpense.errorOdometer');
       }
     }
     setErrors(errs);
