@@ -382,14 +382,21 @@ export default function SettingsScreen() {
           <NavRow label={t('settings.importData')} onPress={handleImport} isLast colors={colors} radius={radius} />
         </View>
 
-        {/* TEMP: удалить после проверки push ─────────────────────────────── */}
-        <SectionHeader label={t('debug.sectionTitle')} colors={{ ...colors, textWeak: colors.statusDue.text }} />
-        <View style={s.card}>
-          <NavRow label={t('onboarding.reset_setting')} onPress={handleResetOnboarding} isLast={false} colors={colors} radius={radius} />
-          <TouchableOpacity style={[s.debugBtn, { backgroundColor: colors.statusDue.background }]} activeOpacity={0.7} onPress={handleTestNotification}>
-            <Text style={[s.debugBtnText, { color: colors.statusDue.text }]}>{t('debug.testNotifBtn')}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* DEBUG: только в dev-режиме — __DEV__ ложный в release-сборке (APK
+            через build_clean.sh), поэтому раздел и его кнопки туда не попадают.
+            Код/i18n-ключи не удалены — они нужны в dev для ручной проверки
+            онбординга и push. TEMP: удалить после проверки push ──────────── */}
+        {__DEV__ && (
+          <>
+            <SectionHeader label={t('debug.sectionTitle')} colors={{ ...colors, textWeak: colors.statusDue.text }} />
+            <View style={s.card}>
+              <NavRow label={t('onboarding.reset_setting')} onPress={handleResetOnboarding} isLast={false} colors={colors} radius={radius} />
+              <TouchableOpacity style={[s.debugBtn, { backgroundColor: colors.statusDue.background }]} activeOpacity={0.7} onPress={handleTestNotification}>
+                <Text style={[s.debugBtnText, { color: colors.statusDue.text }]}>{t('debug.testNotifBtn')}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
         {/* ── конец TEMP ─────────────────────────────────────────────────── */}
 
         <View style={s.bottomPad} />
