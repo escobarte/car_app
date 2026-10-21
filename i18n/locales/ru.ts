@@ -238,13 +238,20 @@ const ru = {
     kmPerMonth:        '{{km}} км за месяц',
     metricAvg:         'Средний расход',
     metricDistance:    'Пробег за период',
+    metricDistanceMonth: 'Пробег за месяц',
     metricMin:         'Минимум',
     metricMax:         'Максимум',
     donutMonthTitle:   'Заправки: {{month}}',
+    // «За всё время» — сравнение месяцев периода между собой.
     expMetricAvg:      'Средний в месяц',
     expMetricTotal:    'Всего за период',
     expMetricMin:      'Минимальный месяц',
     expMetricMax:      'Максимальный месяц',
+    // Режим месяца — сравнение отдельных трат ВНУТРИ выбранного месяца.
+    expMetricAvgMonth:   'Средний чек',
+    expMetricTotalMonth: 'Всего за месяц',
+    expMetricMinMonth:   'Минимальная трата',
+    expMetricMaxMonth:   'Максимальная трата',
     catModalTotal:     'Сумма за период',
     catModalCount:     'Записей',
     catModalShare:     'Доля в расходах',
@@ -255,8 +262,9 @@ const ru = {
     metricModalMonthsTitle: 'По месяцам',
     noClosedSegmentHint:    'Нет закрытого отрезка между полными заправками',
     // Подпись периода под «Средним расходом» (cons-avg) — чтобы не путать с
-    // «Средний расход» на главном экране (там — за всю историю).
-    periodLabel:            'за период {{range}}',
+    // «Средний расход» на главном экране (там — за всю историю). В режиме
+    // месяца — ровно тот месяц, что выбран (а не всё окно графика из 6 стол.).
+    periodLabel:            'за {{month}}',
     periodAllTime:          'за всё время',
   },
 

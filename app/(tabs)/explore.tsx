@@ -94,30 +94,12 @@ function monthFull(ym: string, locale: string): string {
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
-/** Сокращение месяца строчными буквами (ru) — для подписи периода в середине
- *  фразы («за период май–окт 2026»): monthAbbr() даёт заглавную (для подписей
- *  под графиком), в середине русского предложения это выглядит чужеродно. */
-function monthAbbrLower(ym: string, locale: string): string {
-  const abbr = monthAbbr(ym, locale);
-  return locale.startsWith('ru') ? abbr.toLowerCase() : abbr;
-}
-
-/**
- * Диапазон месяцев периода для подписи под «Средним расходом»: «май–окт
- * 2026» в пределах одного года, «дек 2025 – май 2026» на стыке годов, через
- * локаль (monthAbbrLower → Intl.toLocaleDateString). Один месяц — без тире.
- */
-function monthRangeLabel(months: string[], locale: string): string {
-  if (months.length === 0) return '';
-  const first = months[0];
-  const last  = months[months.length - 1];
-  const firstYear = first.slice(0, 4);
-  const lastYear  = last.slice(0, 4);
-  if (first === last) return `${monthAbbrLower(first, locale)} ${firstYear}`;
-  if (firstYear === lastYear) {
-    return `${monthAbbrLower(first, locale)}–${monthAbbrLower(last, locale)} ${lastYear}`;
-  }
-  return `${monthAbbrLower(first, locale)} ${firstYear} – ${monthAbbrLower(last, locale)} ${lastYear}`;
+/** Полное название месяца + год строчными буквами (ru) — для подписи периода
+ *  в середине фразы («за май 2026»): monthFull() даёт заглавную (для шапки),
+ *  в середине русского предложения это выглядит чужеродно. */
+function monthFullLower(ym: string, locale: string): string {
+  const full = monthFull(ym, locale);
+  return locale.startsWith('ru') ? full.charAt(0).toLowerCase() + full.slice(1) : full;
 }
 
 // Русские месяцы в дательном падеже — для строки тренда «к марту».
@@ -203,28 +185,96 @@ function aggConsumption(
   return r;
 }
 
-// Метрики расхода за период (вкладка «Расход л/100»). л/100 — только полные баки (ТЗ 6.2).
-// avg — средневзвешенный по сегментам периода; min/max — по отдельным
-// заправкам периода (это и есть смысл «лучшая/худшая заправка»), не трогаем.
+// Метрики расхода (вкладка «Расход л/100»). л/100 — только полные баки (ТЗ 6.2).
+// «За всё время» — как раньше: avg средневзвешенный по сегментам ВСЕХ months
+// (окна целиком), distance/min/max — по заправкам этого периода.
+// В режиме месяца карточки больше не усредняют окно из 6 столбиков графика —
+// каждая показывает данные ровно selectedYM (того месяца, что выбран стрелками
+// ‹ › или тапом по столбцу и показан в шапке): avg/distance — доля месяца из
+// getMonthlyFuelConsumption (monthlyCons, та же карта, что красит график), min/
+// max — по отдельным полным заправкам, ЗАКРЫВШИМСЯ в этом месяце (как и раньше,
+// по individual fill-up, просто теперь не по всему окну, а по одному месяцу).
 type ConsStats = { avg: number; distance: number; min: number; max: number };
 
-function buildConsStats(fuel: FuelEntry[], segments: fuelRepo.FuelSegment[], months: string[]): ConsStats {
-  const periodFuel = fuel.filter(f => months.includes(f.date.slice(0, 7)));
-  const cons = periodFuel
-    .filter(f => f.is_full_tank === 1 && f.consumption != null)
+function buildConsStats(
+  fuel: FuelEntry[],
+  segments: fuelRepo.FuelSegment[],
+  months: string[],
+  monthlyCons: Map<string, { liters: number; km: number }>,
+  selectedYM: string,
+  allTime: boolean,
+): ConsStats {
+  if (allTime) {
+    const periodFuel = fuel.filter(f => months.includes(f.date.slice(0, 7)));
+    const cons = periodFuel
+      .filter(f => f.is_full_tank === 1 && f.consumption != null)
+      .map(f => f.consumption as number);
+
+    const odos = periodFuel.map(f => f.odometer).filter(o => o > 0);
+    const distance = odos.length >= 2 ? Math.max(...odos) - Math.min(...odos) : 0;
+
+    if (cons.length === 0) return { avg: 0, distance, min: 0, max: 0 };
+
+    const periodSegments = segments.filter(s => months.includes(s.date.slice(0, 7)));
+    return {
+      avg:      fuelRepo.calcWeightedConsumption(periodSegments) ?? 0,
+      distance,
+      min:      Math.min(...cons),
+      max:      Math.max(...cons),
+    };
+  }
+
+  const monthData = monthlyCons.get(selectedYM);
+  const avg      = monthData && monthData.km > 0
+    ? parseFloat(((monthData.liters / monthData.km) * 100).toFixed(2))
+    : 0;
+  const distance = monthData?.km ?? 0;
+
+  const monthCons = fuel
+    .filter(f => f.date.slice(0, 7) === selectedYM && f.is_full_tank === 1 && f.consumption != null)
     .map(f => f.consumption as number);
 
-  const odos = periodFuel.map(f => f.odometer).filter(o => o > 0);
-  const distance = odos.length >= 2 ? Math.max(...odos) - Math.min(...odos) : 0;
-
-  if (cons.length === 0) return { avg: 0, distance, min: 0, max: 0 };
-
-  const periodSegments = segments.filter(s => months.includes(s.date.slice(0, 7)));
   return {
-    avg:      fuelRepo.calcWeightedConsumption(periodSegments) ?? 0,
+    avg,
     distance,
-    min:      Math.min(...cons),
-    max:      Math.max(...cons),
+    min: monthCons.length > 0 ? Math.min(...monthCons) : 0,
+    max: monthCons.length > 0 ? Math.max(...monthCons) : 0,
+  };
+}
+
+// Метрики расходов (вкладка «Затраты»). «За всё время» — как раньше: avg/min/
+// max сравнивают МЕСЯЦЫ окна (средний/минимальный/максимальный месяц, total —
+// сумма за весь период). В режиме месяца сравнивать месяцы смысла нет (выбран
+// один) — avg/min/max теперь по отдельным тратам ВНУТРИ selectedYM (средний
+// чек, самая маленькая/большая трата месяца), total — сумма месяца (как и в
+// шапке). Подписи карточек меняются вместе со смыслом, см. expMetricAvgMonth и
+// соседние ключи i18n.
+type ExpStats = { avg: number; total: number; min: number; max: number };
+
+function buildExpStats(
+  expenses: Expense[],
+  expMap: Record<string, number>,
+  months: string[],
+  selectedYM: string,
+  allTime: boolean,
+): ExpStats | null {
+  if (allTime) {
+    const vals = months.map(m => expMap[m] ?? 0).filter(v => v > 0);
+    if (vals.length === 0) return null;
+    const total = vals.reduce((s, v) => s + v, 0);
+    return { total, avg: total / vals.length, min: Math.min(...vals), max: Math.max(...vals) };
+  }
+
+  const amounts = expenses
+    .filter(e => e.date.slice(0, 7) === selectedYM)
+    .map(e => e.amount);
+  if (amounts.length === 0) return null;
+  const total = amounts.reduce((s, v) => s + v, 0);
+  return {
+    total,
+    avg: total / amounts.length,
+    min: Math.min(...amounts),
+    max: Math.max(...amounts),
   };
 }
 
@@ -345,8 +395,8 @@ export default function StatsScreen() {
   const consMap   = useMemo(() => aggConsumption(monthlyCons, MONTHS), [monthlyCons, MONTHS]);
   const maxOdoMap = useMemo(() => aggMaxOdo(allFuel, MONTHS),      [allFuel, MONTHS]);
   const consStats = useMemo(
-    () => buildConsStats(allFuel, allSegments, MONTHS),
-    [allFuel, allSegments, MONTHS],
+    () => buildConsStats(allFuel, allSegments, MONTHS, monthlyCons, selectedYM, allTime),
+    [allFuel, allSegments, MONTHS, monthlyCons, selectedYM, allTime],
   );
   const catStats  = useMemo(
     () => buildCatStats(allExpenses, categories, MONTHS),
@@ -391,22 +441,44 @@ export default function StatsScreen() {
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [selCat, allExpenses, MONTHS]);
 
-  // ── Метрики расходов за период ───────────────────────────────────────────────
-  const expMetrics = useMemo(() => {
-    const vals = MONTHS.map(m => expMap[m] ?? 0).filter(v => v > 0);
-    if (vals.length === 0) return null;
-    const total = vals.reduce((s, v) => s + v, 0);
-    return { total, avg: total / vals.length, min: Math.min(...vals), max: Math.max(...vals) };
-  }, [expMap, MONTHS]);
+  // ── Метрики расходов: за период (allTime) или за выбранный месяц ───────────
+  const expMetrics = useMemo(
+    () => buildExpStats(allExpenses, expMap, MONTHS, selectedYM, allTime),
+    [allExpenses, expMap, MONTHS, selectedYM, allTime],
+  );
 
   // ── Открыть модалку деталей метрики ─────────────────────────────────────────
+  // Имя категории для badge в списке трат месяца (ниже) — так же, как в
+  // разбивке по категориям и модалке категории (cat.key переведённый, иначе
+  // «сырое» cat.name).
+  function catDisplayName(categoryId: number): string {
+    const cat = categories.find(c => c.id === categoryId);
+    if (!cat) return '';
+    return cat.key ? t(`categories.${cat.key}` as never) : cat.name;
+  }
+
   function openMetricModal(key: 'cons-avg' | 'cons-distance' | 'cons-min' | 'cons-max' | 'exp-avg' | 'exp-total' | 'exp-min' | 'exp-max') {
+    // Полные баки для расхода: в режиме месяца — закрывшиеся в selectedYM
+    // (то же определение, что и у consStats.min/max); «за всё время» — как
+    // раньше, по всем месяцам MONTHS (там MONTHS = все месяцы с данными).
     const consFills = allFuel
-      .filter(f => MONTHS.includes(f.date.slice(0, 7)) && f.is_full_tank === 1 && f.consumption != null)
+      .filter(f => (allTime ? MONTHS.includes(f.date.slice(0, 7)) : f.date.slice(0, 7) === selectedYM)
+        && f.is_full_tank === 1 && f.consumption != null)
       .sort((a, b) => b.date.localeCompare(a.date));
+    // «За всё время»: месяцы периода с тратами (сравниваем месяцы между собой).
     const monthData = MONTHS
       .map(m => ({ ym: m, total: expMap[m] ?? 0 }))
       .filter(m => m.total > 0);
+    // Режим месяца: отдельные траты selectedYM (сравниваем траты внутри месяца).
+    const monthExpenses = allExpenses
+      .filter(e => e.date.slice(0, 7) === selectedYM)
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    const distanceLabel = allTime ? t('stats.metricDistance') : t('stats.metricDistanceMonth');
+    const expAvgLabel    = allTime ? t('stats.expMetricAvg')   : t('stats.expMetricAvgMonth');
+    const expTotalLabel  = allTime ? t('stats.expMetricTotal') : t('stats.expMetricTotalMonth');
+    const expMinLabel    = allTime ? t('stats.expMetricMin')   : t('stats.expMetricMinMonth');
+    const expMaxLabel    = allTime ? t('stats.expMetricMax')   : t('stats.expMetricMaxMonth');
 
     switch (key) {
       case 'cons-avg': {
@@ -429,10 +501,10 @@ export default function StatsScreen() {
       case 'cons-distance': {
         if (!consStats) return;
         setMetricModal({
-          title: t('stats.metricDistance'),
+          title: distanceLabel,
           icon:  'navigate-outline',
           rows: [{
-            label: t('stats.metricDistance'),
+            label: distanceLabel,
             value: consStats.distance > 0
               ? `${consStats.distance.toLocaleString()} ${t('common.km')}`
               : '—',
@@ -481,69 +553,125 @@ export default function StatsScreen() {
         break;
       }
       case 'exp-avg': {
-        if (!expMetrics || monthData.length === 0) return;
-        setMetricModal({
-          title: t('stats.expMetricAvg'),
-          icon:  'wallet-outline',
-          rows: [
-            { label: t('stats.metricModalMonthsCount'), value: String(monthData.length) },
-            { label: t('stats.expMetricAvg'), value: formatMoney(expMetrics.avg, currCode) },
-          ],
-          listTitle: t('stats.metricModalMonthsTitle'),
-          items: monthData.map(m => ({
-            left:  monthFull(m.ym, locale),
-            right: formatMoney(m.total, currCode),
-          })),
-        });
+        if (!expMetrics) return;
+        if (allTime) {
+          if (monthData.length === 0) return;
+          setMetricModal({
+            title: expAvgLabel,
+            icon:  'wallet-outline',
+            rows: [
+              { label: t('stats.metricModalMonthsCount'), value: String(monthData.length) },
+              { label: expAvgLabel, value: formatMoney(expMetrics.avg, currCode) },
+            ],
+            listTitle: t('stats.metricModalMonthsTitle'),
+            items: monthData.map(m => ({
+              left:  monthFull(m.ym, locale),
+              right: formatMoney(m.total, currCode),
+            })),
+          });
+        } else {
+          if (monthExpenses.length === 0) return;
+          setMetricModal({
+            title: expAvgLabel,
+            icon:  'wallet-outline',
+            rows: [
+              { label: t('stats.catModalCount'), value: String(monthExpenses.length) },
+              { label: expAvgLabel, value: formatMoney(expMetrics.avg, currCode) },
+            ],
+            listTitle: t('stats.catModalRecords'),
+            items: monthExpenses.map(e => ({
+              left:  e.date,
+              right: formatMoney(e.amount, currCode),
+              badge: catDisplayName(e.category_id),
+            })),
+          });
+        }
         break;
       }
       case 'exp-total': {
-        if (!expMetrics || monthData.length === 0) return;
-        setMetricModal({
-          title: t('stats.expMetricTotal'),
-          icon:  'calculator-outline',
-          rows: [
-            { label: t('stats.metricModalMonthsCount'), value: String(monthData.length) },
-            { label: t('stats.expMetricTotal'), value: formatMoney(expMetrics.total, currCode) },
-          ],
-          listTitle: t('stats.metricModalMonthsTitle'),
-          items: monthData.map(m => ({
-            left:  monthFull(m.ym, locale),
-            right: formatMoney(m.total, currCode),
-          })),
-        });
+        if (!expMetrics) return;
+        if (allTime) {
+          if (monthData.length === 0) return;
+          setMetricModal({
+            title: expTotalLabel,
+            icon:  'calculator-outline',
+            rows: [
+              { label: t('stats.metricModalMonthsCount'), value: String(monthData.length) },
+              { label: expTotalLabel, value: formatMoney(expMetrics.total, currCode) },
+            ],
+            listTitle: t('stats.metricModalMonthsTitle'),
+            items: monthData.map(m => ({
+              left:  monthFull(m.ym, locale),
+              right: formatMoney(m.total, currCode),
+            })),
+          });
+        } else {
+          if (monthExpenses.length === 0) return;
+          setMetricModal({
+            title: expTotalLabel,
+            icon:  'calculator-outline',
+            rows: [
+              { label: t('stats.catModalCount'), value: String(monthExpenses.length) },
+              { label: expTotalLabel, value: formatMoney(expMetrics.total, currCode) },
+            ],
+            listTitle: t('stats.catModalRecords'),
+            items: monthExpenses.map(e => ({
+              left:  e.date,
+              right: formatMoney(e.amount, currCode),
+              badge: catDisplayName(e.category_id),
+            })),
+          });
+        }
         break;
       }
       case 'exp-min': {
-        if (!expMetrics || monthData.length === 0) return;
-        const minM = monthData.reduce((m, d) => (d.total < m.total ? d : m));
-        setMetricModal({
-          title: t('stats.expMetricMin'),
-          icon:  'trending-down-outline',
-          rows: [{
-            label:      t('stats.expMetricMin'),
-            value:      formatMoney(expMetrics.min, currCode),
-            valueColor: colors.statusOk.text,
-          }],
-          listTitle: t('stats.metricModalMonthsTitle'),
-          items: [{ left: monthFull(minM.ym, locale), right: formatMoney(minM.total, currCode) }],
-        });
+        if (!expMetrics) return;
+        if (allTime) {
+          if (monthData.length === 0) return;
+          const minM = monthData.reduce((m, d) => (d.total < m.total ? d : m));
+          setMetricModal({
+            title: expMinLabel,
+            icon:  'trending-down-outline',
+            rows: [{ label: expMinLabel, value: formatMoney(expMetrics.min, currCode), valueColor: colors.statusOk.text }],
+            listTitle: t('stats.metricModalMonthsTitle'),
+            items: [{ left: monthFull(minM.ym, locale), right: formatMoney(minM.total, currCode) }],
+          });
+        } else {
+          if (monthExpenses.length === 0) return;
+          const minE = monthExpenses.reduce((m, e) => (e.amount < m.amount ? e : m));
+          setMetricModal({
+            title: expMinLabel,
+            icon:  'trending-down-outline',
+            rows: [{ label: expMinLabel, value: formatMoney(expMetrics.min, currCode), valueColor: colors.statusOk.text }],
+            listTitle: t('stats.catModalRecords'),
+            items: [{ left: minE.date, right: formatMoney(minE.amount, currCode), badge: catDisplayName(minE.category_id) }],
+          });
+        }
         break;
       }
       case 'exp-max': {
-        if (!expMetrics || monthData.length === 0) return;
-        const maxM = monthData.reduce((m, d) => (d.total > m.total ? d : m));
-        setMetricModal({
-          title: t('stats.expMetricMax'),
-          icon:  'trending-up-outline',
-          rows: [{
-            label:      t('stats.expMetricMax'),
-            value:      formatMoney(expMetrics.max, currCode),
-            valueColor: colors.statusDue.text,
-          }],
-          listTitle: t('stats.metricModalMonthsTitle'),
-          items: [{ left: monthFull(maxM.ym, locale), right: formatMoney(maxM.total, currCode) }],
-        });
+        if (!expMetrics) return;
+        if (allTime) {
+          if (monthData.length === 0) return;
+          const maxM = monthData.reduce((m, d) => (d.total > m.total ? d : m));
+          setMetricModal({
+            title: expMaxLabel,
+            icon:  'trending-up-outline',
+            rows: [{ label: expMaxLabel, value: formatMoney(expMetrics.max, currCode), valueColor: colors.statusDue.text }],
+            listTitle: t('stats.metricModalMonthsTitle'),
+            items: [{ left: monthFull(maxM.ym, locale), right: formatMoney(maxM.total, currCode) }],
+          });
+        } else {
+          if (monthExpenses.length === 0) return;
+          const maxE = monthExpenses.reduce((m, e) => (e.amount > m.amount ? e : m));
+          setMetricModal({
+            title: expMaxLabel,
+            icon:  'trending-up-outline',
+            rows: [{ label: expMaxLabel, value: formatMoney(expMetrics.max, currCode), valueColor: colors.statusDue.text }],
+            listTitle: t('stats.catModalRecords'),
+            items: [{ left: maxE.date, right: formatMoney(maxE.amount, currCode), badge: catDisplayName(maxE.category_id) }],
+          });
+        }
         break;
       }
     }
@@ -925,11 +1053,11 @@ export default function StatsScreen() {
             <Text style={s.metricSub} numberOfLines={1}>
               {allTime
                 ? t('stats.periodAllTime')
-                : t('stats.periodLabel', { range: monthRangeLabel(MONTHS, locale) })}
+                : t('stats.periodLabel', { month: monthFullLower(selectedYM, locale) })}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('cons-distance')}>
-            <Text style={s.metricLabel}>{t('stats.metricDistance')}</Text>
+            <Text style={s.metricLabel}>{allTime ? t('stats.metricDistance') : t('stats.metricDistanceMonth')}</Text>
             <Text style={s.metricValue} numberOfLines={1}>
               {consStats.distance > 0
                 ? `${consStats.distance.toLocaleString()} ${t('common.km')}`
@@ -955,21 +1083,21 @@ export default function StatsScreen() {
       {activeTab === 'expenses' && expMetrics && (
         <View style={s.metricsGrid}>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-avg')}>
-            <Text style={s.metricLabel}>{t('stats.expMetricAvg')}</Text>
+            <Text style={s.metricLabel}>{allTime ? t('stats.expMetricAvg') : t('stats.expMetricAvgMonth')}</Text>
             <Text style={s.metricValue} numberOfLines={1}>{formatMoney(expMetrics.avg, currCode)}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-total')}>
-            <Text style={s.metricLabel}>{t('stats.expMetricTotal')}</Text>
+            <Text style={s.metricLabel}>{allTime ? t('stats.expMetricTotal') : t('stats.expMetricTotalMonth')}</Text>
             <Text style={s.metricValue} numberOfLines={1}>{formatMoney(expMetrics.total, currCode)}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-min')}>
-            <Text style={s.metricLabel}>{t('stats.expMetricMin')}</Text>
+            <Text style={s.metricLabel}>{allTime ? t('stats.expMetricMin') : t('stats.expMetricMinMonth')}</Text>
             <Text style={[s.metricValue, { color: colors.statusOk.text }]} numberOfLines={1}>
               {formatMoney(expMetrics.min, currCode)}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.metricCell} activeOpacity={0.7} onPress={() => openMetricModal('exp-max')}>
-            <Text style={s.metricLabel}>{t('stats.expMetricMax')}</Text>
+            <Text style={s.metricLabel}>{allTime ? t('stats.expMetricMax') : t('stats.expMetricMaxMonth')}</Text>
             <Text style={[s.metricValue, { color: colors.statusDue.text }]} numberOfLines={1}>
               {formatMoney(expMetrics.max, currCode)}
             </Text>

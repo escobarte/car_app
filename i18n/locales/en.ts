@@ -219,13 +219,20 @@ const en: TranslationKeys = {
     kmPerMonth:        '{{km}} km this month',
     metricAvg:         'Avg. consumption',
     metricDistance:    'Distance for period',
+    metricDistanceMonth: 'Distance this month',
     metricMin:         'Minimum',
     metricMax:         'Maximum',
     donutMonthTitle:   'Fuel fill-ups: {{month}}',
+    // All-time mode — compares the months of the period to each other.
     expMetricAvg:      'Avg. per month',
     expMetricTotal:    'Total for period',
     expMetricMin:      'Min month',
     expMetricMax:      'Max month',
+    // Month mode — compares individual expenses WITHIN the selected month.
+    expMetricAvgMonth:   'Avg. per expense',
+    expMetricTotalMonth: 'Total this month',
+    expMetricMinMonth:   'Smallest expense',
+    expMetricMaxMonth:   'Largest expense',
     catModalTotal:     'Total for period',
     catModalCount:     'Records',
     catModalShare:     'Share of expenses',
@@ -237,8 +244,9 @@ const en: TranslationKeys = {
     noClosedSegmentHint:    'No closed segment between full tanks',
     // Period caption under “Avg. consumption” (cons-avg) — to avoid mixing
     // it up with “Avg. consumption” on the home screen (that one is the
-    // whole-history figure).
-    periodLabel:            'for {{range}}',
+    // whole-history figure). Month mode — exactly the selected month (not
+    // the whole 6-bar chart window).
+    periodLabel:            'for {{month}}',
     periodAllTime:          'all time',
   },
 

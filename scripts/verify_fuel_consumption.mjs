@@ -669,6 +669,43 @@ section('Сценарий 8: регрессия на car_backup_Latest_v4.json')
     allTimeAvg === 6.9,
     `получено ${allTimeAvg}`
   );
+
+  // Окно графика (последние 6 месяцев с данными, как monthsWithData.slice(-6)
+  // в explore.tsx) — сравниваем старую формулу «Пробег за период»
+  // (диапазон одометра между первой и последней заправкой ВНУТРИ окна —
+  // так считает buildConsStats() в режиме «за всё время», он не менялся
+  // этой задачей) с суммой км по месяцам окна (getMonthlyFuelConsumption).
+  // Точного совпадения не бывает по конструкции: старая формула — это
+  // диапазон между датами реальных заправок, а новая — пробег по КАЛЕНДАРНЫМ
+  // месяцам окна (сегмент может начинаться до окна или кончаться после него,
+  // и тогда интерполированная доля месяца на границе не равна сырому
+  // диапазону одометра заправок) — поэтому это не равенство, а снимок двух
+  // чисел на реальных данных, чтобы заметить, если формула случайно
+  // изменится.
+  const allMonths = new Set();
+  backup.fuelEntries.forEach(f => allMonths.add(f.date.slice(0, 7)));
+  (backup.expenses ?? []).forEach(e => allMonths.add(e.date.slice(0, 7)));
+  const windowMonths = [...allMonths].sort().slice(-6);
+
+  const windowFuel = backup.fuelEntries.filter(f => windowMonths.includes(f.date.slice(0, 7)));
+  const windowOdos = windowFuel.map(f => f.odometer).filter(o => o > 0);
+  const oldWindowDistance = windowOdos.length >= 2 ? Math.max(...windowOdos) - Math.min(...windowOdos) : 0;
+  const sumKmInWindow = windowMonths.reduce((s, ym) => s + (monthly.get(ym)?.km ?? 0), 0);
+
+  console.log(
+    `  →     окно ${windowMonths[0]}..${windowMonths[windowMonths.length - 1]}: ` +
+    `старый «Пробег за период»=${oldWindowDistance} км, сумма «Пробег за месяц» по окну=${sumKmInWindow.toFixed(1)} км`
+  );
+  check(
+    'снимок: старая формула «Пробег за период» для окна не изменилась (6415 км на этих данных)',
+    oldWindowDistance === 6415,
+    `получено ${oldWindowDistance}`
+  );
+  check(
+    'снимок: сумма «Пробег за месяц» по окну не изменилась (6524.5 км на этих данных)',
+    Math.abs(sumKmInWindow - 6524.52) < 0.1,
+    `получено ${sumKmInWindow.toFixed(2)}`
+  );
 }
 
 // ─── Итог ────────────────────────────────────────────────────────────────────
