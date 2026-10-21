@@ -685,13 +685,67 @@ SELECT odometer, date FROM service_record
 **Файл:** `db/backup.ts`. Формат: `{ version: 1, exportDate, car, settings,
 categories, reminders, fuelEntries, expenses, serviceRecords }`.
 
-### Экспорт (`exportDatabase()`, `backup.ts:50-115`)
+### Экспорт — два отдельных действия, без скрытого фоллбэка одного в другой
 
-Читает все 7 таблиц целиком, сериализует как есть в JSON (без
-преобразований), сохраняет через SAF (Android) или системный Share
-(iOS/фоллбэк).
+`buildBackupPayload()` (`backup.ts:44-72`) читает все 7 таблиц целиком,
+сериализует как есть в JSON (без преобразований) и строит имя файла
+`car_backup_YYYY-MM-DD_HHmm.json`. Этот payload используют обе функции
+экспорта ниже — раньше была одна функция `exportDatabase()`, которая сама
+решала, SAF или sharing, и именно это молчаливое решение было причиной бага
+(см. ниже).
 
-### Импорт (`importDatabase()`, `backup.ts:159-327`)
+**`exportDatabaseToFolder()`** (`backup.ts:92-137`, Android, SAF):
+
+```js
+const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+if (!perm.granted) return { ok: false, code: 'cancelled' };
+
+const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(perm.directoryUri, fileName, 'application/json');
+await FileSystem.StorageAccessFramework.writeAsStringAsync(fileUri, content, { encoding: 'utf8' });
+
+// Перечитываем и сравниваем длину — ловит «тихий» пустой/усечённый файл
+const readBack = await FileSystem.StorageAccessFramework.readAsStringAsync(fileUri, { encoding: 'utf8' });
+if (readBack.length !== content.length) throw new Error(...);
+
+return { ok: true, fileName };
+```
+
+**Найденная причина бага** (экспорт в папку на Google Drive: пользователь
+выбирает папку → разрешает доступ → приложение САМО открывает системное
+меню «поделиться» → файла в выбранной папке нет): до этой правки весь SAF-
+блок (`createFileAsync` + `writeAsStringAsync`) был обёрнут в `try { ... }
+catch { /* ошибку не показываем */ }`, и ЛЮБОЕ исключение там (в том числе
+нестабильность Google Drive как SAF-провайдера — известная проблема)
+молча проглатывалось, после чего код **безусловно** проваливался в код
+fallback-а и звал `Sharing.shareAsync()` с файлом из кэша приложения — тем
+самым открывая Share-sheet, которого пользователь не просил, и никак не
+сообщая, что запись в выбранную папку не удалась. Плюс у записи не было
+верификации: даже без исключения провайдер мог оставить файл пустым
+(задокументированная проблема) — это осталось бы незамеченным. Исправлено:
+`exportDatabaseToFolder()` больше не падает автоматически ни в какой
+fallback — любая ошибка (включая провал верификации длины) возвращается как
+явный `ExportResult { ok: false, code: 'failed', detail }`, который экран
+Настроек показывает как `Alert` с подсказкой попробовать другую папку или
+«Поделиться» (`backup.exportErrorHint`).
+
+**`exportDatabaseViaShare()`** (`backup.ts:146-176`, любая платформа):
+пишет payload во временный файл в `FileSystem.cacheDirectory`, затем
+`Sharing.shareAsync()` с `mimeType: 'application/json'` — системное меню
+«поделиться» само служит подтверждением, без выбора папки. Единственный
+способ на iOS (там SAF не существует) и запасной вариант на Android, если
+«Экспорт в папку» не сработал для конкретной папки/провайдера.
+
+`app/settings.tsx`: кнопка «Экспорт в папку» видна только при
+`Platform.OS === 'android'`; «Поделиться / сохранить файл» — всегда.
+Обработчики (`handleExportToFolder`/`handleExportShare`) не оборачивают
+вызов в `try/catch` — обе функции экспорта сами возвращают `ExportResult`,
+как и `importDatabase()` возвращает `ImportResult` (тот же паттерн).
+
+### Импорт (`importDatabase()`, `backup.ts:220-388`)
+
+Не менялся этой правкой — читает файл через `DocumentPicker` +
+`FileSystem.readAsStringAsync()` (обычная копия в кэше приложения, не SAF),
+поэтому ему всё равно, каким из двух способов экспорта файл был создан.
 
 1. Валидирует только структуру: `version === 1` и что `categories`,
    `reminders`, `fuelEntries`, `expenses`, `serviceRecords` — массивы.

@@ -31,7 +31,7 @@ import {
   requestNotificationPermissions,
   hasNotificationPermission,
 } from '@/notifications/engine';
-import { exportDatabase, importDatabase } from '@/db/backup';
+import { exportDatabaseToFolder, exportDatabaseViaShare, importDatabase } from '@/db/backup';
 
 // ─── Вспомогательные компоненты (получают colors через props) ───────────────
 
@@ -214,19 +214,36 @@ export default function SettingsScreen() {
   }
 
   // ── Экспорт ──────────────────────────────────────────────────────────────
-  async function handleExport() {
+  // Два отдельных, явных действия — никакого скрытого перехода одного в
+  // другое (см. db/backup.ts): «в папку» (SAF, Android) либо «поделиться»
+  // (системное меню, любая платформа/провайдер) — запасной вариант, если
+  // SAF не сработал для конкретной папки пользователя.
+  async function handleExportToFolder() {
     setBackupState('working');
-    try {
-      const savedFileName = await exportDatabase();
-      if (savedFileName) {
-        Alert.alert(
-          t('backup.exportSuccess'),
-          t('backup.exportSavedSAF', { name: savedFileName }),
-        );
-      }
+    const result = await exportDatabaseToFolder();
+    if (result.ok) {
+      Alert.alert(t('backup.exportSuccess'), t('backup.exportSavedSAF', { name: result.fileName }));
       setBackupState('idle');
-    } catch (e) {
-      Alert.alert(t('backup.exportError'), String(e));
+    } else if (result.code === 'cancelled') {
+      setBackupState('idle');
+    } else {
+      Alert.alert(
+        t('backup.exportError'),
+        t('backup.exportErrorHint') + (result.detail ? `\n\n${result.detail}` : ''),
+      );
+      setBackupState('error');
+      setTimeout(() => setBackupState('idle'), 2000);
+    }
+  }
+
+  async function handleExportShare() {
+    setBackupState('working');
+    const result = await exportDatabaseViaShare();
+    if (result.ok) {
+      // Системное меню «поделиться» само служит подтверждением — доп. Alert не нужен.
+      setBackupState('idle');
+    } else {
+      Alert.alert(t('backup.exportError'), result.detail ?? '');
       setBackupState('error');
       setTimeout(() => setBackupState('idle'), 2000);
     }
@@ -376,7 +393,12 @@ export default function SettingsScreen() {
         {/* ── РЕЗЕРВНАЯ КОПИЯ ────────────────────────────────────────────── */}
         <SectionHeader label={t('settings.sectionBackup')} colors={colors} />
         <View style={s.card}>
-          <NavRow label={t('settings.exportData')} onPress={handleExport}
+          {Platform.OS === 'android' && (
+            <NavRow label={t('settings.exportData')} onPress={handleExportToFolder}
+              value={backupState === 'working' ? '…' : undefined}
+              isLast={false} colors={colors} radius={radius} />
+          )}
+          <NavRow label={t('settings.shareData')} onPress={handleExportShare}
             value={backupState === 'working' ? '…' : undefined}
             isLast={false} colors={colors} radius={radius} />
           <NavRow label={t('settings.importData')} onPress={handleImport} isLast colors={colors} radius={radius} />

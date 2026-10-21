@@ -266,7 +266,8 @@ const en: TranslationKeys = {
     notifications:       'Notifications',
     notifPermDeniedHint:
       'Notification permission was not granted. Enable it for this app in your phone settings.',
-    exportData:          'Export data',
+    exportData:          'Export to folder',
+    shareData:           'Share / save file',
     importData:          'Import data',
     categories:          'Expense categories',
     editOdometerTitle:   'New odometer, km',
@@ -287,8 +288,11 @@ const en: TranslationKeys = {
 
   backup: {
     exportSuccess:       'File saved',
-    exportSavedSAF:      '«{{name}}» saved to selected folder',
-    exportError:         'Failed to create backup',
+    exportSavedSAF:      'File «{{name}}» saved to selected folder',
+    exportError:         'Failed to save file',
+    // Second paragraph in the Alert on "Export to folder" failure — points to
+    // the fallback (see db/backup.ts, exportDatabaseViaShare).
+    exportErrorHint:     'Try another folder, or use "Share / save file"',
     importConfirmTitle:  'Restore data?',
     importConfirmMsg:    'This will overwrite ALL current app data. Continue?',
     importConfirmOk:     'Restore',

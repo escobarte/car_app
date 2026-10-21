@@ -34,20 +34,14 @@ export type ImportResult =
   | { ok: true;  counts: { fuel: number; expense: number; service: number; reminder: number; category: number } }
   | { ok: false; code: 'cancelled' | 'invalid_file' | 'restore_failed'; detail?: string };
 
+export type ExportResult =
+  | { ok: true;  fileName: string }
+  | { ok: false; code: 'cancelled' | 'failed'; detail?: string };
+
 // ─── Экспорт ─────────────────────────────────────────────────────────────────
 
-/**
- * Собирает все данные из БД и сохраняет JSON.
- *
- * Android: открывает SAF-диалог выбора папки → сохраняет файл туда.
- * Если SAF не поддерживается провайдером (Google Drive и др.) — автоматически
- * переходит на fallback sharing.
- * Fallback (SAF отклонён / ошибка / iOS): открывает Share-диалог.
- *
- * Возвращает имя файла при SAF-сохранении (нужен Alert на вызывающей стороне),
- * или null если использовался sharing (диалог сам является подтверждением).
- */
-export async function exportDatabase(): Promise<string | null> {
+/** Собирает все данные из БД в формат бэкапа + готовое имя файла. */
+async function buildBackupPayload(): Promise<{ fileName: string; content: string }> {
   const db = await openDatabase();
 
   const [car, settings, categories, reminders, fuelEntries, expenses, serviceRecords] =
@@ -74,44 +68,111 @@ export async function exportDatabase(): Promise<string | null> {
   const fileName = `car_backup_${datePart}_${hh}${mm}.json`;
   const content  = JSON.stringify(backup, null, 2);
 
-  // ── Android: SAF ────────────────────────────────────────────────────────────
-  if (Platform.OS === 'android') {
-    const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-    if (perm.granted) {
-      try {
-        const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
-          perm.directoryUri,
-          fileName,
-          'application/json',
-        );
-        await FileSystem.writeAsStringAsync(fileUri, content, {
-          encoding: FileSystem.EncodingType.UTF8,
-        });
-        return fileName;
-      } catch {
-        // Провайдер не поддерживает запись через SAF (например, Google Drive).
-        // Автоматически переходим на sharing — ошибку не показываем.
-      }
-    }
-    // Папка не выбрана или SAF-запись не поддерживается → sharing
+  return { fileName, content };
+}
+
+/**
+ * Экспорт в папку, выбранную пользователем (Android, Storage Access
+ * Framework) — единственное действие, без скрытого перехода на sharing.
+ *
+ * Раньше ошибка записи через SAF (createFileAsync/writeAsStringAsync) тихо
+ * глушилась в пустом catch, и код автоматически открывал системное меню
+ * «поделиться» с файлом из кэша — пользователь после выбора папки и выдачи
+ * разрешения неожиданно видел Share-sheet, а в выбранной папке файла не
+ * оказывалось (запись в неё реально не удалась, но об этом не сообщалось).
+ * Это и была причина баг-репорта. Теперь: либо чёткий успех, либо явная
+ * ошибка (`ExportResult`) — никакого автоматического sharing.
+ *
+ * Дополнительно перечитываем записанный файл и сравниваем длину с исходным
+ * содержимым: известная проблема нестабильных SAF-провайдеров (например,
+ * Google Drive) — createFileAsync/writeAsStringAsync иногда не бросают
+ * исключение, а файл в папке всё равно оказывается пустым или усечённым.
+ * Без перечитывания такой случай выглядел бы как успех.
+ */
+export async function exportDatabaseToFolder(): Promise<ExportResult> {
+  if (Platform.OS !== 'android') {
+    // SAF — платформенная технология Android; на iOS такого выбора папки
+    // в принципе нет (там только exportDatabaseViaShare).
+    return { ok: false, code: 'failed', detail: 'StorageAccessFramework is Android-only' };
   }
 
-  // ── Fallback: sharing (iOS, SAF отклонён или недоступен) ───────────────────
-  const tempUri = (FileSystem.cacheDirectory ?? '') + fileName;
-  await FileSystem.writeAsStringAsync(tempUri, content, {
-    encoding: FileSystem.EncodingType.UTF8,
-  });
+  let fileName: string;
+  let content: string;
+  try {
+    ({ fileName, content } = await buildBackupPayload());
+  } catch (e) {
+    return { ok: false, code: 'failed', detail: String(e) };
+  }
 
-  const canShare = await Sharing.isAvailableAsync();
-  if (!canShare) throw new Error('Sharing is not available on this device');
+  const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+  if (!perm.granted) {
+    return { ok: false, code: 'cancelled' };
+  }
 
-  await Sharing.shareAsync(tempUri, {
-    mimeType:    'application/json',
-    dialogTitle: 'Export data',
-    UTI:         'public.json',
-  });
+  try {
+    const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+      perm.directoryUri,
+      fileName,
+      'application/json',
+    );
+    await FileSystem.StorageAccessFramework.writeAsStringAsync(fileUri, content, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
 
-  return null;
+    // Проверка: перечитываем и сравниваем длину (не просто «> 0» — так
+    // ловим и усечённую запись, не только полностью пустую).
+    const readBack = await FileSystem.StorageAccessFramework.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    if (readBack.length !== content.length) {
+      throw new Error(
+        `File written but corrupted: expected ${content.length} bytes, got ${readBack.length}`,
+      );
+    }
+
+    return { ok: true, fileName };
+  } catch (e) {
+    return { ok: false, code: 'failed', detail: String(e) };
+  }
+}
+
+/**
+ * Экспорт через системное меню «Поделиться» — без выбора папки, одно
+ * действие на любой платформе (включая iOS, где SAF недоступен) и для
+ * любого провайдера/приложения (Google Drive, Telegram, «Файлы» и т.д.).
+ * Запасной вариант на случай, если exportDatabaseToFolder() не сработал
+ * для конкретной папки/провайдера пользователя (см. docs/ТЗ, раздел 9).
+ */
+export async function exportDatabaseViaShare(): Promise<ExportResult> {
+  let fileName: string;
+  let content: string;
+  try {
+    ({ fileName, content } = await buildBackupPayload());
+  } catch (e) {
+    return { ok: false, code: 'failed', detail: String(e) };
+  }
+
+  try {
+    const tempUri = (FileSystem.cacheDirectory ?? '') + fileName;
+    await FileSystem.writeAsStringAsync(tempUri, content, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+
+    const canShare = await Sharing.isAvailableAsync();
+    if (!canShare) {
+      return { ok: false, code: 'failed', detail: 'Sharing is not available on this device' };
+    }
+
+    await Sharing.shareAsync(tempUri, {
+      mimeType:    'application/json',
+      dialogTitle: 'Export data',
+      UTI:         'public.json',
+    });
+
+    return { ok: true, fileName };
+  } catch (e) {
+    return { ok: false, code: 'failed', detail: String(e) };
+  }
 }
 
 // ─── Импорт ──────────────────────────────────────────────────────────────────
