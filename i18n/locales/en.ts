@@ -206,9 +206,12 @@ const en: TranslationKeys = {
     tabFuel:           'Fuel',
     tabExpenses:       'Expenses',
     tabConsumption:    'Consumption (L/100)',
+    tabYear:           'Year',
     allTime:           'All time',
     prevMonthA11y:     'Previous month',
     nextMonthA11y:     'Next month',
+    prevYearA11y:      'Previous year',
+    nextYearA11y:      'Next year',
     noData:            'No data',
     totalLabel:        'Total 6 months',
     avgConsLabel:      'Avg. consumption',
@@ -248,6 +251,25 @@ const en: TranslationKeys = {
     // the whole 6-bar chart window).
     periodLabel:            'for {{month}}',
     periodAllTime:          'all time',
+
+    // ── "Year" tab ───────────────────────────────────────────────────────
+    yearNoData:      'No data for this year',
+    yearSummaryTitle:'Totals {{year}}',
+    // Caption for an incomplete year, so the numbers don't mislead: "from"
+    // for the very first year of history if it didn't start on Jan 1;
+    // "until" for the current (not yet finished) year.
+    yearDataFrom:      'data from {{date}}',
+    yearDataUntil:      'data until {{date}}',
+    yearDataFromUntil:  'data from {{from}} to {{to}}',
+    yearDistance:    'Distance, km',
+    yearAvgCons:     'Avg. consumption for the year',
+    yearLiters:      'Liters refueled',
+    yearFillCount:   'Fill-ups',
+    yearFuelCost:    'Fuel',
+    yearExpenseCost: 'Other expenses (no fuel)',
+    yearServiceCost: 'incl. Service',
+    yearTotalCost:   'Total spent',
+    yearCostPerKm:   'Cost per km',
   },
 
   settings: {

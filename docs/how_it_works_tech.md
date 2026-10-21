@@ -513,6 +513,63 @@ selectedYM, allTime)` (`explore.tsx:279-304`) принимают и `MONTHS`, и
   считаются по тому же `MONTHS` — то есть по всей истории, а не по
   последним 6 месяцам.
 
+### Вкладка «Год»
+
+Четвёртая вкладка-таблетка (`TabKey = 'fuel' | 'expenses' | 'consumption' |
+'year'`), полностью отдельный режим: не использует `MONTHS`/`windowEnd`/
+`allTime`/график — своя навигация `selectedYear` (`explore.tsx:423`) и своя
+функция `buildYearStats()` (`explore.tsx:362-397`).
+
+```js
+// buildYearStats(fuel, expenses, monthlyCons, categories, year)
+for (m = 1..12) sumKm += monthlyCons.get(`${year}-${m}`)?.km ?? 0;   // и sumLiters аналогично
+km      = sumKm > 0 ? sumKm : null;                                   // «—» за весь год без закрытых сегментов
+avgCons = sumKm > 0 ? (sumLiters / sumKm) * 100 : null;
+
+yearFuel     = fuel.filter(f => f.date.slice(0,4) === String(year));  // сырые записи, НЕ доля сегмента
+liters       = sum(yearFuel.liters); fuelCost = sum(yearFuel.total_cost); fillCount = yearFuel.length;
+
+yearExpenses = expenses.filter(e => e.date.slice(0,4) === String(year));
+expenseCost  = sum(yearExpenses.amount);                              // Expense — не содержит топливо по определению
+serviceCost  = sum(yearExpenses, где category.key === 'service');
+
+totalCost = fuelCost + expenseCost;
+costPerKm = km ? totalCost / km : null;
+```
+
+- `km`/`avgCons` — та же карта `monthlyCons` (`fuelRepo.getMonthlyFuelConsumption`),
+  что и помесячная статистика (раздел 2.2) — просто просуммированная по 12
+  месяцам года, а не по окну из 6. Согласовано с остальными вкладками по
+  построению (общий источник данных), но **не равно** «старой» формуле
+  max−min одометра за тот же период (см. `scripts/verify_fuel_consumption.mjs`,
+  Сценарий 8 — на `car_backup_Latest_v4.json` сумма `km` за 2025+2026 даёт
+  12076, а не 12480 — те же причины расхождения, что у снимков «Пробег за
+  период» выше).
+- `liters`/`fillCount`/`fuelCost` — НЕ из `monthlyCons`, а напрямую по
+  `fuel_entry.date` в этом году: это физически внесённые записи (сколько
+  раз заправлялись, сколько литров и денег), а не оценка для расхода —
+  сознательно два разных числа из разных источников (ТЗ 4.5 п.3).
+- `serviceCost` — подмножество `expenseCost` по `category.key === 'service'`
+  (builtin-категория «Сервис», `db/database.ts`); если категория
+  удалена/отсутствует — `0`, без ошибки.
+- `hasData = yearFuel.length > 0 || yearExpenses.length > 0` — год без единой
+  записи показывает `stats.yearNoData` вместо карточки.
+
+**Навигация** (`yearsWithData`/`earliestYear`/`canYearBack`/`canYearForward`/
+`goYear()`, `explore.tsx:454-466`) — тот же паттерн, что у месяца
+(`earliestYM`/`goMonth`), только в годах: `earliestYear` — год первой записи
+во всей истории (`CURR_YEAR`, если данных нет вообще), «вперёд» ограничено
+текущим календарным годом.
+
+**Подпись неполного года** (`showYearFromCap`/`showYearUntilCap`,
+`explore.tsx:479-490`): «с» — только когда `selectedYear === earliestYear`
+(самый первый год во всей истории) И первая запись в нём позже 1 января;
+«до» — когда `selectedYear === CURR_YEAR` (год ещё не закончился, подпись —
+сегодняшняя дата, не дата последней записи). Оба условия проверены на
+`car_backup_Latest_v4.json`: 2025 (первая запись 04.12.2025) даёт «данные с
+04.12.2025», 2026 (текущий год) — «данные до {сегодня}» — совпадает с
+примерами из задачи буквально.
+
 ---
 
 ## 6. Регламенты (reminders)

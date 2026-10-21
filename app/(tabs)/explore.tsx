@@ -49,7 +49,7 @@ const BAR_COL_W    = 44;
 /** Прозрачность приглушённых (невыбранных) столбиков — цвет берётся из темы */
 const BAR_DIM_OPACITY = 0.2;
 
-type TabKey = 'fuel' | 'expenses' | 'consumption';
+type TabKey = 'fuel' | 'expenses' | 'consumption' | 'year';
 
 function ionName(icon: string): React.ComponentProps<typeof Ionicons>['name'] {
   return resolveIcon(icon) as React.ComponentProps<typeof Ionicons>['name'];
@@ -143,6 +143,12 @@ function fmtFull(v: number): string {
  */
 function fmtKm(v: number): string {
   return Math.round(v).toLocaleString();
+}
+
+/** 'DD.MM.YYYY'-подобная дата по локали — для подписи «данные с/до …» (вкладка «Год»). */
+function fmtDateLocale(dateStr: string, locale: string): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 // ─── Агрегация данных ─────────────────────────────────────────────────────────
@@ -329,12 +335,75 @@ function buildCatStats(
     .sort((a, b) => b.total - a.total);
 }
 
+// Итоги календарного года (вкладка «Год»). Пробег/средний расход — через ту
+// же карту monthlyCons (fuelRepo.getMonthlyFuelConsumption, доли сегментов
+// по месяцам), что и помесячная статистика, просуммированную по 12 месяцам
+// года — числа согласованы с остальными вкладками. km === null, если за весь
+// год сумма км по сегментам <= 0 (нет ни одного закрытого отрезка,
+// пересекающего год) — в UI «—» (ТЗ 4.5, п.3).
+// Литры/заправки/лей на топливо — отдельно, по заправкам с датой в этом
+// году (сырое поле liters, НЕ доля сегмента — это разные числа: «Литров
+// заправлено» это физически вылитые литры, а не оценка для расхода).
+// Расходы (Expense) — отдельная таблица, топлива там нет по определению,
+// поэтому «кроме топлива» выполняется автоматически, без доп. фильтра.
+type YearStats = {
+  km:          number | null;
+  avgCons:     number | null;
+  liters:      number;
+  fillCount:   number;
+  fuelCost:    number;
+  expenseCost: number;
+  serviceCost: number;
+  totalCost:   number;
+  costPerKm:   number | null;
+  hasData:     boolean;
+};
+
+function buildYearStats(
+  fuel: FuelEntry[],
+  expenses: Expense[],
+  monthlyCons: Map<string, { liters: number; km: number }>,
+  categories: Category[],
+  year: number,
+): YearStats {
+  const ys = String(year);
+
+  let sumKm = 0, sumLiters = 0;
+  for (let m = 1; m <= 12; m++) {
+    const data = monthlyCons.get(`${ys}-${String(m).padStart(2, '0')}`);
+    if (data) { sumKm += data.km; sumLiters += data.liters; }
+  }
+  const km      = sumKm > 0 ? sumKm : null;
+  const avgCons = sumKm > 0 ? parseFloat(((sumLiters / sumKm) * 100).toFixed(2)) : null;
+
+  const yearFuel  = fuel.filter(f => f.date.slice(0, 4) === ys);
+  const liters    = yearFuel.reduce((s, f) => s + f.liters, 0);
+  const fuelCost  = yearFuel.reduce((s, f) => s + f.total_cost, 0);
+  const fillCount = yearFuel.length;
+
+  const yearExpenses = expenses.filter(e => e.date.slice(0, 4) === ys);
+  const expenseCost  = yearExpenses.reduce((s, e) => s + e.amount, 0);
+  const serviceCat   = categories.find(c => c.key === 'service');
+  const serviceCost  = serviceCat
+    ? yearExpenses.filter(e => e.category_id === serviceCat.id).reduce((s, e) => s + e.amount, 0)
+    : 0;
+
+  const totalCost = fuelCost + expenseCost;
+  const costPerKm = km != null ? parseFloat((totalCost / km).toFixed(2)) : null;
+
+  return {
+    km, avgCons, liters, fillCount, fuelCost, expenseCost, serviceCost, totalCost, costPerKm,
+    hasData: yearFuel.length > 0 || yearExpenses.length > 0,
+  };
+}
+
 // ─── Компонент ────────────────────────────────────────────────────────────────
 
 export default function StatsScreen() {
   const { t, i18n } = useTranslation();
-  const locale   = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
-  const CURR_YM  = useMemo(currentYM, []);
+  const locale    = i18n.language === 'ru' ? 'ru-RU' : 'en-US';
+  const CURR_YM   = useMemo(currentYM, []);
+  const CURR_YEAR = Number(CURR_YM.slice(0, 4));
 
   const th = useAppTheme();
   const { colors, radius, typography, gradient } = th;
@@ -349,6 +418,9 @@ export default function StatsScreen() {
   const [windowEnd,  setWindowEnd]  = useState<string>(CURR_YM);
   // Режим «за всё время»: суммы/категории/расход считаются по всем записям.
   const [allTime,    setAllTime]    = useState(false);
+  // Выбранный год (вкладка «Год») — отдельная навигация ‹ год ›, без
+  // 6-месячного окна графика и без тумблера «за всё время».
+  const [selectedYear, setSelectedYear] = useState<number>(CURR_YEAR);
   const [car,       setCar]       = useState<Car | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allFuel,      setAllFuel]      = useState<FuelEntry[]>([]);
@@ -375,6 +447,47 @@ export default function StatsScreen() {
   // Самый ранний месяц с данными — граница для стрелки «назад». Нет данных
   // вообще → earliestYM = null, «назад» дальше текущего месяца не пускаем.
   const earliestYM = monthsWithData[0] ?? null;
+
+  // ── Вкладка «Год» ────────────────────────────────────────────────────────────
+  // Года с хоть одной записью (заправка/расход), по возрастанию. Нет данных
+  // вообще → earliestYear = текущий год (обе стрелки навигации гаснут).
+  const yearsWithData = useMemo(() => {
+    const set = new Set(monthsWithData.map(m => Number(m.slice(0, 4))));
+    return Array.from(set).sort((a, b) => a - b);
+  }, [monthsWithData]);
+  const earliestYear = yearsWithData[0] ?? CURR_YEAR;
+
+  const canYearBack    = selectedYear > earliestYear;
+  const canYearForward = selectedYear < CURR_YEAR;
+  function goYear(delta: 1 | -1) {
+    const next = selectedYear + delta;
+    if (next > CURR_YEAR || next < earliestYear) return;
+    setSelectedYear(next);
+  }
+
+  const yearStats = useMemo(
+    () => buildYearStats(allFuel, allExpenses, monthlyCons, categories, selectedYear),
+    [allFuel, allExpenses, monthlyCons, categories, selectedYear],
+  );
+
+  // Даты записей выбранного года (заправки+расходы), по возрастанию — чтобы
+  // подписать неполный год («данные с …», ТЗ 4.5 п.4). «С …» показываем
+  // только для самого первого года во всей истории данных (иначе обычный
+  // прошлый год, где первая заправка просто пришлась не на 1 января, тоже
+  // получил бы эту подпись без всякой причины). «До …» — для текущего года,
+  // который по определению ещё не закончился.
+  const yearDates = useMemo(() => {
+    const ys = String(selectedYear);
+    return [
+      ...allFuel.filter(f => f.date.slice(0, 4) === ys).map(f => f.date),
+      ...allExpenses.filter(e => e.date.slice(0, 4) === ys).map(e => e.date),
+    ].sort();
+  }, [allFuel, allExpenses, selectedYear]);
+
+  const earliestInYear   = yearDates[0];
+  const showYearFromCap  = selectedYear === earliestYear && !!earliestInYear && earliestInYear > `${selectedYear}-01-01`;
+  const showYearUntilCap = selectedYear === CURR_YEAR;
+  const todayStr          = new Date().toISOString().slice(0, 10);
 
   // Месяцы, показанные на графике и участвующие в агрегации: либо скользящее
   // окно из 6 месяцев вокруг selectedYM, либо (в allTime) все месяцы с данными.
@@ -819,11 +932,12 @@ export default function StatsScreen() {
 
       {/* ── Переключатель-таблетки ─────────────────────────────────────────── */}
       <View style={s.pillsRow}>
-        {(['fuel', 'expenses', 'consumption'] as TabKey[]).map(tab => {
+        {(['fuel', 'expenses', 'consumption', 'year'] as TabKey[]).map(tab => {
           const active = tab === activeTab;
-          const label  = tab === 'fuel'     ? t('stats.tabFuel')
-                       : tab === 'expenses' ? t('stats.tabExpenses')
-                       : t('stats.tabConsumption');
+          const label  = tab === 'fuel'        ? t('stats.tabFuel')
+                       : tab === 'expenses'    ? t('stats.tabExpenses')
+                       : tab === 'consumption' ? t('stats.tabConsumption')
+                       : t('stats.tabYear');
           return (
             <TouchableOpacity
               key={tab}
@@ -838,11 +952,11 @@ export default function StatsScreen() {
                   end={gradient.accent.end}
                   style={[s.pill, s.pillActive]}
                 >
-                  <Text style={[s.pillText, s.pillTextActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{label}</Text>
+                  <Text style={[s.pillText, s.pillTextActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{label}</Text>
                 </LinearGradient>
               ) : (
                 <View style={s.pill}>
-                  <Text style={s.pillText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>{label}</Text>
+                  <Text style={s.pillText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{label}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -850,6 +964,102 @@ export default function StatsScreen() {
         })}
       </View>
 
+      {activeTab === 'year' ? (
+        <>
+          {/* ── Навигация по году ─────────────────────────────────────────── */}
+          <View style={s.summaryRow}>
+            <View style={s.periodNavRow}>
+              <TouchableOpacity
+                style={[s.periodArrow, !canYearBack && s.periodArrowDisabled]}
+                onPress={() => goYear(-1)}
+                disabled={!canYearBack}
+                accessibilityRole="button"
+                accessibilityLabel={t('stats.prevYearA11y')}
+              >
+                <Ionicons name="chevron-back" size={16} color={canYearBack ? colors.textSecondary : colors.textWeak} />
+              </TouchableOpacity>
+              <Text style={s.summaryLabel}>{selectedYear}</Text>
+              <TouchableOpacity
+                style={[s.periodArrow, !canYearForward && s.periodArrowDisabled]}
+                onPress={() => goYear(1)}
+                disabled={!canYearForward}
+                accessibilityRole="button"
+                accessibilityLabel={t('stats.nextYearA11y')}
+              >
+                <Ionicons name="chevron-forward" size={16} color={canYearForward ? colors.textSecondary : colors.textWeak} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* ── Карточка «Итоги <год>» ────────────────────────────────────── */}
+          {!yearStats.hasData ? (
+            <View style={s.emptyCard}>
+              <Text style={s.noDataText}>{t('stats.yearNoData')}</Text>
+            </View>
+          ) : (
+            <View style={s.yearCard}>
+              <Text style={s.yearCardTitle}>{t('stats.yearSummaryTitle', { year: selectedYear })}</Text>
+
+              {(showYearFromCap || showYearUntilCap) && (
+                <Text style={s.yearCaption}>
+                  {showYearFromCap && showYearUntilCap
+                    ? t('stats.yearDataFromUntil', {
+                        from: fmtDateLocale(earliestInYear!, locale),
+                        to:   fmtDateLocale(todayStr, locale),
+                      })
+                    : showYearFromCap
+                    ? t('stats.yearDataFrom', { date: fmtDateLocale(earliestInYear!, locale) })
+                    : t('stats.yearDataUntil', { date: fmtDateLocale(todayStr, locale) })}
+                </Text>
+              )}
+
+              <View style={s.yearRow}>
+                <Text style={s.yearRowLabel}>{t('stats.yearDistance')}</Text>
+                <Text style={s.yearRowValue}>
+                  {yearStats.km != null ? `${fmtKm(yearStats.km)} ${t('common.km')}` : '—'}
+                </Text>
+              </View>
+              <View style={s.yearRow}>
+                <Text style={s.yearRowLabel}>{t('stats.yearAvgCons')}</Text>
+                <Text style={s.yearRowValue}>
+                  {yearStats.avgCons != null ? `${yearStats.avgCons.toFixed(1)} ${t('stats.lPer100')}` : '—'}
+                </Text>
+              </View>
+              <View style={s.yearRow}>
+                <Text style={s.yearRowLabel}>{t('stats.yearLiters')}</Text>
+                <Text style={s.yearRowValue}>{fmtFull(yearStats.liters)} {t('common.liters')}</Text>
+              </View>
+              <View style={s.yearRow}>
+                <Text style={s.yearRowLabel}>{t('stats.yearFillCount')}</Text>
+                <Text style={s.yearRowValue}>{yearStats.fillCount}</Text>
+              </View>
+              <View style={s.yearRow}>
+                <Text style={s.yearRowLabel}>{t('stats.yearFuelCost')}</Text>
+                <Text style={s.yearRowValue}>{formatMoney(yearStats.fuelCost, currCode)}</Text>
+              </View>
+              <View style={s.yearRow}>
+                <Text style={s.yearRowLabel}>{t('stats.yearExpenseCost')}</Text>
+                <Text style={s.yearRowValue}>{formatMoney(yearStats.expenseCost, currCode)}</Text>
+              </View>
+              <View style={[s.yearRow, s.yearSubRow]}>
+                <Text style={s.yearRowLabelSub}>{t('stats.yearServiceCost')}</Text>
+                <Text style={s.yearRowValueSub}>{formatMoney(yearStats.serviceCost, currCode)}</Text>
+              </View>
+              <View style={s.yearRow}>
+                <Text style={s.yearRowLabel}>{t('stats.yearTotalCost')}</Text>
+                <Text style={s.yearRowValue}>{formatMoney(yearStats.totalCost, currCode)}</Text>
+              </View>
+              <View style={[s.yearRow, s.yearRowLast]}>
+                <Text style={s.yearRowLabel}>{t('stats.yearCostPerKm')}</Text>
+                <Text style={s.yearRowValue}>
+                  {yearStats.costPerKm != null ? formatMoney(yearStats.costPerKm, currCode) : '—'}
+                </Text>
+              </View>
+            </View>
+          )}
+        </>
+      ) : (
+      <>
       {/* ── Тумблер «За всё время» ───────────────────────────────────────────── */}
       <TouchableOpacity
         style={s.allTimeRow}
@@ -1207,6 +1417,8 @@ export default function StatsScreen() {
           )}
         </>
       )}
+      </>
+      )}
     </ScrollView>
 
     {/* ── Модалка деталей метрики ──────────────────────────────────────────── */}
@@ -1295,14 +1507,18 @@ function makeStyles(th: AppTheme, topInset: number) {
     },
 
     // ── Переключатель-таблетки ─────────────────────────────────────────────────
+    // gap/paddingHorizontal уменьшены под 4 кнопки (было 3) — на узких экранах
+    // самая длинная подпись («Расход л/100км»/«Consumption (L/100)») всё равно
+    // укладывается за счёт adjustsFontSizeToFit (minimumFontScale={0.7} у Text).
     pillsRow: {
       flexDirection: 'row',
-      gap:           6,
+      gap:           4,
       marginBottom:  20,
     },
     pillOuter: { flex: 1 },
     pill: {
       paddingVertical:   9,
+      paddingHorizontal: 2,
       borderRadius:      radius.pill,
       backgroundColor:   colors.surface,
       borderWidth:       1,
@@ -1557,5 +1773,42 @@ function makeStyles(th: AppTheme, topInset: number) {
       fontSize: 11,
       fontWeight: '400' as const,
     },
+
+    // ── Карточка «Итоги <год>» (вкладка «Год») ─────────────────────────────────
+    yearCard: {
+      backgroundColor: colors.surface,
+      borderRadius:    radius.card,
+      padding:         16,
+      marginBottom:    20,
+    },
+    yearCardTitle: {
+      color: colors.textPrimary,
+      ...typography.cardTextMedium,
+      marginBottom: 2,
+    },
+    // Подпись неполного года («данные с …» / «данные до …») — тот же стиль,
+    // что у остальных уточняющих подписей на экране (metricSub/monthKm).
+    yearCaption: {
+      color: colors.textMuted,
+      ...typography.labelSmall,
+      marginBottom: 10,
+    },
+    yearRow: {
+      flexDirection:     'row',
+      justifyContent:    'space-between',
+      alignItems:        'center',
+      paddingVertical:   12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      gap:               16,
+    },
+    yearRowLast:  { borderBottomWidth: 0 },
+    yearRowLabel: { color: colors.textSecondary, ...typography.cardText, flex: 1 },
+    yearRowValue: { color: colors.textPrimary, ...typography.cardTextMedium, textAlign: 'right' },
+    // «из них на Сервис» — подстрока «Лей на расходы», без своей границы и
+    // чуть приглушённым цветом/отступом, чтобы читалось как её часть.
+    yearSubRow:      { borderBottomWidth: 0, paddingVertical: 6, paddingLeft: 14 },
+    yearRowLabelSub: { color: colors.textMuted, ...typography.labelSmall, flex: 1 },
+    yearRowValueSub: { color: colors.textMuted, ...typography.labelSmall, textAlign: 'right' },
   });
 }
