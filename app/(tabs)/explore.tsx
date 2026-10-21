@@ -133,6 +133,18 @@ function fmtFull(v: number): string {
   });
 }
 
+/**
+ * Целые км с разделителем тысяч — для вывода пробега. Округляет (не
+ * обрезает) до целого: значения из getMonthlyFuelConsumption() и прочих
+ * пропорциональных расчётов (доля сегмента по km) дробные (1284.774 км),
+ * а в самих расчётах дробность нужна для точности — округляем только тут,
+ * на выводе. toLocaleString() без явного round() у дробного числа печатает
+ * дробную часть (до 3 знаков по умолчанию), поэтому round() обязателен.
+ */
+function fmtKm(v: number): string {
+  return Math.round(v).toLocaleString();
+}
+
 // ─── Агрегация данных ─────────────────────────────────────────────────────────
 
 function aggFuel(entries: FuelEntry[], months: string[]): Record<string, number> {
@@ -234,11 +246,24 @@ function buildConsStats(
     .filter(f => f.date.slice(0, 7) === selectedYM && f.is_full_tank === 1 && f.consumption != null)
     .map(f => f.consumption as number);
 
+  // Нет полной заправки, ЗАКРЫВШЕЙСЯ в этом месяце (monthCons пусто) — весь
+  // месяц мог быть покрыт отрезком, который начался раньше и закроется позже
+  // (например, май: все заправки частичные). Тогда берём расход отрезков,
+  // чей диапазон [d1,d2] ПЕРЕСЕКАЕТ месяц, целиком (не долю месяца) — один
+  // отрезок → min = max, несколько → минимальный/максимальный из них. Для
+  // месяцев с закрывшейся заправкой это не используется — поведение там
+  // не меняется (monthCons уже непустой).
+  const segCons = monthCons.length > 0
+    ? monthCons
+    : segments
+        .filter(s => s.d1.slice(0, 7) <= selectedYM && selectedYM <= s.d2.slice(0, 7))
+        .map(s => s.consumption);
+
   return {
     avg,
     distance,
-    min: monthCons.length > 0 ? Math.min(...monthCons) : 0,
-    max: monthCons.length > 0 ? Math.max(...monthCons) : 0,
+    min: segCons.length > 0 ? Math.min(...segCons) : 0,
+    max: segCons.length > 0 ? Math.max(...segCons) : 0,
   };
 }
 
@@ -465,6 +490,14 @@ export default function StatsScreen() {
       .filter(f => (allTime ? MONTHS.includes(f.date.slice(0, 7)) : f.date.slice(0, 7) === selectedYM)
         && f.is_full_tank === 1 && f.consumption != null)
       .sort((a, b) => b.date.localeCompare(a.date));
+    // Режим месяца, нет заправки, закрывшейся в selectedYM (consFills пуст,
+    // см. buildConsStats): минимум/максимум берём из отрезков, пересекающих
+    // месяц, целиком — тот же критерий и те же сегменты, что в consStats.
+    const crossSegments = (!allTime && consFills.length === 0)
+      ? allSegments
+          .filter(seg => seg.d1.slice(0, 7) <= selectedYM && selectedYM <= seg.d2.slice(0, 7))
+          .sort((a, b) => a.consumption - b.consumption)
+      : [];
     // «За всё время»: месяцы периода с тратами (сравниваем месяцы между собой).
     const monthData = MONTHS
       .map(m => ({ ym: m, total: expMap[m] ?? 0 }))
@@ -506,15 +539,25 @@ export default function StatsScreen() {
           rows: [{
             label: distanceLabel,
             value: consStats.distance > 0
-              ? `${consStats.distance.toLocaleString()} ${t('common.km')}`
+              ? `${fmtKm(consStats.distance)} ${t('common.km')}`
               : '—',
           }],
         });
         break;
       }
       case 'cons-min': {
-        if (!consStats || consFills.length === 0) return;
-        const minFill = consFills.reduce((m, f) => (f.consumption! < m.consumption! ? f : m));
+        if (!consStats || (consFills.length === 0 && crossSegments.length === 0)) return;
+        const items = consFills.length > 0
+          ? [consFills.reduce((m, f) => (f.consumption! < m.consumption! ? f : m))].map(f => ({
+              left:  f.date,
+              right: `${f.liters.toFixed(2)} ${t('common.liters')}`,
+              badge: `${f.odometer} ${t('common.km')}`,
+            }))
+          : [crossSegments[0]].map(seg => ({
+              left:  seg.date,
+              right: `${seg.liters.toFixed(2)} ${t('common.liters')}`,
+              badge: `${seg.o2} ${t('common.km')}`,
+            }));
         setMetricModal({
           title: t('stats.metricMin'),
           icon:  'trending-down-outline',
@@ -524,17 +567,23 @@ export default function StatsScreen() {
             valueColor: colors.statusOk.text,
           }],
           listTitle: t('stats.metricModalFillsTitle'),
-          items: [{
-            left:  minFill.date,
-            right: `${minFill.liters.toFixed(2)} ${t('common.liters')}`,
-            badge: `${minFill.odometer} ${t('common.km')}`,
-          }],
+          items,
         });
         break;
       }
       case 'cons-max': {
-        if (!consStats || consFills.length === 0) return;
-        const maxFill = consFills.reduce((m, f) => (f.consumption! > m.consumption! ? f : m));
+        if (!consStats || (consFills.length === 0 && crossSegments.length === 0)) return;
+        const items = consFills.length > 0
+          ? [consFills.reduce((m, f) => (f.consumption! > m.consumption! ? f : m))].map(f => ({
+              left:  f.date,
+              right: `${f.liters.toFixed(2)} ${t('common.liters')}`,
+              badge: `${f.odometer} ${t('common.km')}`,
+            }))
+          : [crossSegments[crossSegments.length - 1]].map(seg => ({
+              left:  seg.date,
+              right: `${seg.liters.toFixed(2)} ${t('common.liters')}`,
+              badge: `${seg.o2} ${t('common.km')}`,
+            }));
         setMetricModal({
           title: t('stats.metricMax'),
           icon:  'trending-up-outline',
@@ -544,11 +593,7 @@ export default function StatsScreen() {
             valueColor: colors.statusDue.text,
           }],
           listTitle: t('stats.metricModalFillsTitle'),
-          items: [{
-            left:  maxFill.date,
-            right: `${maxFill.liters.toFixed(2)} ${t('common.liters')}`,
-            badge: `${maxFill.odometer} ${t('common.km')}`,
-          }],
+          items,
         });
         break;
       }
@@ -865,7 +910,7 @@ export default function StatsScreen() {
           )}
           {monthKm !== null && (
             <Text style={s.monthKm}>
-              {t('stats.kmPerMonth', { km: monthKm.toLocaleString() })}
+              {t('stats.kmPerMonth', { km: fmtKm(monthKm) })}
             </Text>
           )}
           {showNoSegmentHint && (
@@ -1060,7 +1105,7 @@ export default function StatsScreen() {
             <Text style={s.metricLabel}>{allTime ? t('stats.metricDistance') : t('stats.metricDistanceMonth')}</Text>
             <Text style={s.metricValue} numberOfLines={1}>
               {consStats.distance > 0
-                ? `${consStats.distance.toLocaleString()} ${t('common.km')}`
+                ? `${fmtKm(consStats.distance)} ${t('common.km')}`
                 : '—'}
             </Text>
           </TouchableOpacity>

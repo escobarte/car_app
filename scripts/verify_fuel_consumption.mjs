@@ -142,6 +142,25 @@ function calcWeightedConsumption(segments) {
   return parseFloat(((totalLiters / totalKm) * 100).toFixed(2));
 }
 
+// Зеркало минимума/максимума за месяц (app/(tabs)/explore.tsx, buildConsStats,
+// режим месяца): сначала заправки, ЗАКРЫВШИЕСЯ в месяце (как и раньше); если
+// таких нет (например май — все заправки частичные) — расход отрезков,
+// диапазон которых [d1,d2] пересекает месяц, целиком (не доля месяца).
+function monthMinMax(db, carId, segments, ym) {
+  const closing = db
+    .prepare(
+      `SELECT consumption FROM fuel_entry
+        WHERE car_id = ? AND is_full_tank = 1 AND consumption IS NOT NULL AND substr(date, 1, 7) = ?;`
+    )
+    .all(carId, ym)
+    .map((r) => r.consumption);
+  const cons = closing.length > 0
+    ? closing
+    : segments.filter((s) => s.d1.slice(0, 7) <= ym && ym <= s.d2.slice(0, 7)).map((s) => s.consumption);
+  if (cons.length === 0) return null;
+  return { min: Math.min(...cons), max: Math.max(...cons) };
+}
+
 // ─── Зеркало новой разбивки расхода по месяцам (db/repositories/fuel.ts) ────
 
 function getOdometerWaypointsBetween(db, carId, fromOdo, toOdo) {
@@ -647,13 +666,26 @@ section('Сценарий 8: регрессия на car_backup_Latest_v4.json')
     console.log(`  →     май 2026: км=${may.km.toFixed(1)}, л=${may.liters.toFixed(2)}, расход=${mayCons}`);
   }
 
+  // Карточки «Минимум»/«Максимум» за май: в мае нет полной заправки, значит
+  // min/max берутся не из закрывшихся заправок месяца (их нет), а из отрезка,
+  // который пересекает май целиком (апрель→июнь) — один отрезок → min = max.
+  const mayMinMax = monthMinMax(db, carId, segments, '2026-05');
+  console.log(`  →     май 2026: минимум/максимум карточек = ${JSON.stringify(mayMinMax)}`);
+  check(
+    'май 2026: минимум = максимум = 5.97 (нет своей закрывшейся заправки, один отрезок пересекает месяц целиком)',
+    !!mayMinMax && mayMinMax.min === 5.97 && mayMinMax.max === 5.97,
+    `получено ${JSON.stringify(mayMinMax)}`
+  );
+
   const sumKmByMonth = [...monthly.values()].reduce((s, v) => s + v.km, 0);
   const sumLitersByMonth = [...monthly.values()].reduce((s, v) => s + v.liters, 0);
   const sumKmSegments = segments.reduce((s, x) => s + x.km, 0);
   const sumLitersSegments = segments.reduce((s, x) => s + x.liters, 0);
 
+  // Это и есть «сумма км по месяцам совпадает с общим итогом» — общий итог
+  // пробега по всей истории = сумма км всех сегментов (между полными баками).
   check(
-    'сумма км по месяцам = сумма км по сегментам',
+    'сумма км по месяцам = сумма км по сегментам (общий итог)',
     Math.abs(sumKmByMonth - sumKmSegments) < 1e-6,
     `по месяцам=${sumKmByMonth}, по сегментам=${sumKmSegments}`
   );
